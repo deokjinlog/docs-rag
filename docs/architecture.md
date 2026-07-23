@@ -4,8 +4,8 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                   온프레미스 서버                                 │
-│   RTX PRO 6000 Blackwell ×4 (96GB each) — GPU 0만 사용 중         │
+│                   로컬 개발 머신 (WSL2)                           │
+│   RTX 4060 Laptop 8GB · 16-core · Docker · 단일 GPU              │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │                   Docker Compose                          │  │
@@ -25,7 +25,7 @@
 │  │                                                          │  │
 │  │  ┌────────┐                                              │  │
 │  │  │  vLLM  │  GPU 0, TP=1                                 │  │
-│  │  │(:8000) │  Qwen3-14B-AWQ, util 0.30, KV fp8            │  │
+│  │  │(:8000) │  Qwen3-4B-AWQ, KV fp8 (8GB 프로파일)          │  │
 │  │  └────────┘                                              │  │
 │  │                                                          │  │
 │  │  ┌───────────┐  ┌───────────┐  ┌───────────┐             │  │
@@ -37,8 +37,8 @@
 ```
 
 - PostgreSQL, Qdrant 모두 docker-compose 내부에서 관리. 데이터는 named volume으로 영속화.
-- **vLLM**: GPU 0 단독, `--tensor-parallel-size 1`, `--gpu-memory-utilization 0.30` (~29GB 예약), `--kv-cache-dtype fp8_e4m3`, `--max-model-len 8192`. 14B-AWQ는 96GB 단일 GPU에 충분히 들어가서 TP 이득 없음 (오히려 통신 오버헤드 불이익).
-- **GPU 배치**: vLLM / API / Celery / Qdrant 모두 GPU 0에 통합. GPU 1~3은 비어있음. 향후 워크로드 분산 또는 Paddle GPU 복귀 시 활용.
+- **vLLM (로컬 8GB 프로파일)**: 단일 GPU, `Qwen3-4B-AWQ`, `--kv-cache-dtype fp8_e4m3`, `--max-model-len`을 8GB에 맞춰 축소(예: 4096), `--gpu-memory-utilization`은 임베더·리랭커와 VRAM을 나눠 쓰도록 조정. **README '평가'의 RAGAS·지연 수치는 대형 GPU + `Qwen3-14B-AWQ` 구성에서 측정** — 로컬은 동일 파이프라인을 소형 모델로 구동(생성 품질은 모델 크기만큼 하락 예상). OpenAI 호환 API LLM으로 교체 시 로컬 LLM VRAM 0.
+- **GPU 배치**: 단일 GPU(RTX 4060 8GB)에 임베더(BGE-M3)·리랭커·vLLM(소형)·Qdrant 인덱싱을 공유. VRAM이 빠듯하면 LLM을 API로 빼거나 임베더를 CPU로 오프로드. 다중 GPU 대형 구성은 트래픽↑ 시 확장 지점.
 - ODL 컨테이너는 2개 프로세스를 동시 실행:
   - **FastAPI 래퍼** (:5002): `odl/server.py`. Worker가 HTTP로 호출하는 진입점.
     - **원래 존재 이유 (docker.sock 제거)**: 예전엔 celery worker가 `docker exec odl ...`로 PDF 변환을 호출했는데, 이러려면 celery 컨테이너에 `/var/run/docker.sock`을 마운트해야 함 → celery가 호스트 도커 데몬 전체 제어권 확보(다른 컨테이너 kill, privileged 컨테이너 생성 등) → 컨테이너 격리 붕괴 + Kubernetes 이식 불가. 이걸 HTTP 호출로 대체하려고 래퍼를 만든 게 1번 동기.

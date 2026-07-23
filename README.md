@@ -123,7 +123,7 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 
 ## 평가
 
-평가셋 24문항, RAGAS Triad + 운영 trace 27건. judge는 GPT-4o-mini로 **분리**(serving=Qwen3)해 self-preference bias 회피.
+평가셋 24문항, RAGAS Triad + 운영 trace 27건 (serving=**Qwen3-14B-AWQ**). judge는 GPT-4o-mini로 **분리**해 self-preference bias 회피.
 
 | 지표 | 값 | 목표 | 판정 |
 |---|---|---|---|
@@ -274,10 +274,12 @@ docker compose exec api uv run pytest tests/ -v -m integration      # E2E (docke
 |---|---|
 | Runtime | Python 3.10 · FastAPI · uv · Celery + RabbitMQ · Docker Compose |
 | 검색·임베딩 | BGE-M3 1024d + Qdrant BM25 · RRF · INT8 양자화 · `bge-reranker-v2-m3` |
-| LLM | Qwen3-14B-AWQ (vLLM, TP=1, util 0.30, KV fp8) |
-| OCR | PaddleOCR PP-StructureV3 (layout+table+formula+OCR, 현재 CPU) |
+| LLM | **Qwen3-4B-AWQ** (vLLM, KV fp8) — 로컬 8GB 프로파일 ¹ |
+| OCR | PaddleOCR PP-StructureV3 (layout+table+formula+OCR, CPU) |
 | 저장 | PostgreSQL(메타) + Qdrant(벡터DB) |
-| 하드웨어 | Ubuntu 24.04 · RTX PRO 6000 Blackwell ×4 (96GB, GPU 0 통합) |
+| 하드웨어 | **로컬: RTX 4060 Laptop 8GB · WSL2(Ubuntu) · 16-core · Docker** |
+
+¹ 답변 생성 LLM은 GPU에 맞춰 교체 가능한 tier. 로컬 8GB는 소형 `Qwen3-4B-AWQ`(또는 OpenAI 호환 API)로 구동. 아래 *평가*의 RAGAS·지연 수치는 **`Qwen3-14B-AWQ` 구성에서 측정** — 소형 모델은 생성 품질이 그만큼 낮아지므로 로컬 재측정은 별도 ([architecture.md](docs/architecture.md)).
 
 ## 기여
 
