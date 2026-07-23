@@ -13,6 +13,56 @@ PDF 등록 → 비동기 `extract → ocr → chunk → embed` → Qdrant 하이
 
 > **English** — Production-grade Korean RAG pipeline for structured documents (insurance policies, regulations, manuals). Hybrid search (BGE-M3 + BM25 + RRF), CRAG retrieval gate, Self-RAG verification, and **critic-guided regeneration** with 5-class failure-type classification. Includes 12-section serving-trace observability, feedback endpoint with trace-id join, and 4-layer guardrails (PII / Injection / Grounding / Output). Honest SLA reporting — known gaps are documented (see *Evaluation snapshot* below).
 
+## 파이프라인 한눈에 보기
+
+PDF 한 건이 등록되면 **수집(비동기 4-스테이지)** → **서빙(Adaptive RAG)** 두 흐름을 거친다. 수집은 Celery 체인으로 단계마다 상태 코드를 남겨 **실패 지점부터만 재처리**하고, 서빙은 쿼리 성격에 맞춰 검색·검증 경로를 분기한다.
+
+```mermaid
+flowchart TD
+    subgraph 수집["📥 수집 — Celery 비동기 체인 (상태코드 기반 재처리)"]
+        A[PDF 입력] --> B["extract<br/>ODL: docling-fast → Java fallback<br/>PDF → Markdown + 이미지"]
+        B --> C["ocr<br/>PaddleOCR PP-StructureV3<br/>이미지·표 → 구조화 텍스트"]
+        C --> D["chunk<br/>정규화 + 룰베이스 청킹<br/>heading 경계 · 참조 추적 · sibling"]
+        D --> E[("PostgreSQL<br/>청크 원본 + 계층·참조 메타")]
+        E --> F["embed<br/>BGE-M3 1024d · Cosine · INT8"]
+        F --> G[("Qdrant<br/>Dense + BM25")]
+    end
+    subgraph 서빙["🔍 서빙 — POST /answer (Adaptive RAG)"]
+        Q[사용자 질의] --> R["Adaptive 라우팅<br/>5-type 분류 + Dense/BM25 배수"]
+        R --> S["하이브리드 검색<br/>Dense + BM25 → RRF → Reranker"]
+        S --> T{"CRAG<br/>rerank score ≥ 0.3?"}
+        T -->|No · 쿼리 재작성| R
+        T -->|Yes| U["프롬프트 분기 → vLLM Qwen3-14B"]
+        U --> V["Self-RAG 검증<br/>조항·수치 대조 → risk_level"]
+        V --> W["Critic<br/>failure_type 5분류 → 조건부 regenerate"]
+        W --> X[답변 + trace_id + citations]
+    end
+    G -.검색 대상.-> S
+```
+
+### 수집 4-스테이지 (PDF 등록 → 벡터 적재)
+
+| 스테이지 | 하는 일 | 핵심 설계 | 상세 |
+|---|---|---|---|
+| **① extract** | ODL(`opendataloader-pdf`)로 PDF → Markdown + 내부 이미지 추출 | ≤200p `docling-fast`(hybrid ML) 시도 → 품질 검증 실패 시 Java fallback / >200p Java-direct (`DOCLING_PAGE_LIMIT`). XY-Cut++ 읽기 순서·구조 보존(heading/paragraph/table/list/caption/image), 헤더·푸터·워터마크 자동 제거, **로컬 실행·데이터 유출 0%** | [architecture.md](docs/architecture.md) |
+| **② ocr** | 삽입·스캔 이미지를 PaddleOCR로 구조화 | PP-StructureV3(layout+table+formula+OCR). `is_valid_image` **6단계 입구 필터**로 garbage(1px·아이콘·단색·가로띠) 컷 → 표는 그리드로 복원, 나머지는 image 청크. Blackwell sm_120 미지원으로 현재 **CPU 고정** | [chunking.md](docs/chunking.md) |
+| **③ chunk** | 텍스트 정규화 + 룰베이스 청킹 + OCR 청크 합류 | **경계 3원칙** — (1) heading → 새 청크 시작, (2) paragraph/table/list 의미 단위 보존, (3) 조항 번호 패턴 → 참조 관계 기록. Adaptive(헤딩 트리 · text/table/image 분리 · `part_index` sibling 복원) / Fixed(800자 · 150 오버랩) 전략 선택 | [chunking.md](docs/chunking.md) |
+| **④ embed** | 청크 → BGE-M3 → Qdrant 적재 | 1024차원 · Cosine · INT8 양자화(rescore + oversampling). Dense와 함께 BM25 벡터(`content-bm25`) 병행 저장, 1000개 배치 upsert. Reranker는 서빙 시 `bge-reranker-v2-m3` | [architecture.md](docs/architecture.md) |
+
+### 상태 코드 — 실패 지점부터 재처리
+
+```
+00(대기) → 22(추출중) → 21(추출완료) → 24(OCR중) → 23(OCR완료)
+→ 32(청킹중) → 31(청킹완료) → 42(임베딩중) → 43(임베딩완료) → 41(벡터DB적재) → 11(완료)
+에러: 91(추출) / 92(OCR) / 93(청킹) / 94(청킹·DB) / 95(임베딩) / 96(임베딩·벡터DB) / 99(기타)
+```
+
+단계 완료마다 `tb_document_status`(읽기용) + `tb_document_status_log`(append-only)에 CQRS로 기록 → 장애 발생 시 마지막 성공 상태부터 재처리. 체인은 `extract → ocr → chunk → embed`, 브로커는 RabbitMQ.
+
+### 서빙 — Adaptive RAG
+
+`POST /answer` 한 번에 **라우팅 → CRAG → 프롬프트 분기 → 생성 → Self-RAG → Critic**이 순차 적용된다. 분류·검증·failure type 판정은 전부 **결정론적(정규식·집합 비교) → 0ms**, LLM 호출은 4곳(비교 분해 fallback · CRAG 쿼리 재작성 · 답변 생성 · 조건부 regenerate)뿐. 단계별 실행 주체·구현 위치는 [pipeline.md](docs/pipeline.md), 5-레이어 구현 상태는 [아래 섹션](#5-레이어-구현-상태) 참조.
+
 ## Evaluation snapshot
 
 평가셋 24문항(보험 약관 0011·0012·0013), 동일 배치로 측정한 RAGAS Triad + 운영 trace 27건 (`scripts/eval_ragas.py` + `scripts/trace_summary.py` 기준):
