@@ -56,7 +56,7 @@ curl -X POST localhost:8002/api/v1/docs-rag/documents \
   -H 'Content-Type: application/json' \
   -d '{"service_code":"01","document_id":"0001","document_name":"약관.pdf","document_path":"/data/input/약관.pdf"}'
 
-# 3. 질의 → 검색 + 생성 + 구조 검증, 응답에 trace_id·citations 포함
+# 3. 질의 → 검색 + 생성 + 근거 확인, 응답에 trace_id·citations 포함
 curl -X POST localhost:8002/api/v1/docs-rag/answer \
   -H 'Content-Type: application/json' \
   -d '{"query":"무면허운전 시 보험금 지급이 되나요?","service_code":"01"}'
@@ -131,7 +131,7 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 | 문서 | 내용 |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | 시스템 구성, 포트, 데이터 흐름, 장애 대응 |
-| [docs/pipeline.md](docs/pipeline.md) | 서빙 (라우팅, CRAG, 프롬프트, 구조 검증) |
+| [docs/pipeline.md](docs/pipeline.md) | 서빙 (라우팅, CRAG, 프롬프트, 근거 확인) |
 | [docs/chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR, sibling 복원) |
 | [docs/design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 판단기준(필수/유예)·초기 실측·개선 전략 |
 | [docs/roadmap.md](docs/roadmap.md) | 로드맵 (측정 → 조건부 대조학습·LoRA) |
