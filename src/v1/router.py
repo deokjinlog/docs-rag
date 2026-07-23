@@ -52,12 +52,11 @@ from .utils import embed_texts
 # Feedback 수집 토글 — 점진적 롤아웃·인프라 장애 시 코드 변경 없이 비활성화.
 FEEDBACK_ENABLED = os.environ.get("FEEDBACK_ENABLED", "true").lower() == "true"
 
-# Critic dispatch 토글 (실험적 — 도입 가치 검증 진행 중).
-# 현재 측정: regenerate improved rate 14.3% (1/7, 평가셋 24문항 기준), SLA target 40% 미달.
-# 한국어 다층 조항 표기("특별약관 제5장 제3조")를 정규식 verifier가 collapse → hint 무용 케이스 다수.
-# 트래픽 적은 단계라 즉시 비활성화하지 않고 운영 trace 누적 후 재판정.
-# false 시: 모든 hard_fail/soft_fail이 그대로 응답에 노출 (escalation flag도 안 붙음).
-CRITIC_DISPATCH_ENABLED = os.environ.get("CRITIC_DISPATCH_ENABLED", "true").lower() == "true"
+# Critic dispatch 토글 — 기본 OFF (opt-in). 실측(2026-04-29 trace 27건): regenerate improved 14.3%(1/7),
+# 발동 시 p95 latency 약 2배(5.6s→14.4s). 전문가 검토 툴 특성상 auto-regenerate보다 hard_fail 플래그 노출이 적합.
+# 기본 동작(off): 모든 hard_fail/soft_fail이 그대로 응답에 노출 (escalation flag 없음).
+# 근거·회고: docs/design-retrospective.md. 검색이 진짜 병목이라 측정될 때만 =true 로 켠다.
+CRITIC_DISPATCH_ENABLED = os.environ.get("CRITIC_DISPATCH_ENABLED", "false").lower() == "true"
 
 
 router = APIRouter()

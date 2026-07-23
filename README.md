@@ -36,15 +36,13 @@ flowchart TD
         E --> F["embed<br/>BGE-M3 1024d · Cosine · INT8"]
         F --> G[("Qdrant<br/>Dense + BM25")]
     end
-    subgraph 서빙["서빙 — POST /answer (Adaptive RAG)"]
-        Q[사용자 질의] --> R["Adaptive 라우팅<br/>5-type 분류 + Dense/BM25 배수"]
-        R --> S["하이브리드 검색<br/>Dense + BM25 → RRF → Reranker"]
-        S --> T{"CRAG<br/>rerank score ≥ 0.3?"}
-        T -->|No · 쿼리 재작성| R
-        T -->|Yes| U["프롬프트 분기 → vLLM Qwen3-14B"]
-        U --> V["Self-RAG 검증<br/>조항·수치 대조 → risk_level"]
-        V --> W["Critic<br/>failure_type 5분류 → 조건부 regenerate"]
-        W --> X[답변 + trace_id + citations]
+    subgraph 서빙["서빙 — POST /answer (lean 기본 경로)"]
+        Q[사용자 질의] --> R["라우팅 + 하이브리드 검색<br/>Dense + BM25 → RRF → Reranker"]
+        R --> U["프롬프트 분기 → vLLM Qwen3-14B"]
+        U --> V["구조 검증 (0ms)<br/>조항·수치 대조 → risk_level 플래그"]
+        V --> X[답변 + trace_id + citations]
+        R -.검색 부족 시 · opt-in.-> CRAG["CRAG 재검색"]
+        V -.기본 off · opt-in.-> CR["Critic 재생성"]
     end
     G -.검색 대상.-> S
 ```
@@ -53,11 +51,11 @@ flowchart TD
 
 - **하이브리드 검색** — BGE-M3 Dense + Qdrant BM25를 RRF로 융합, CrossEncoder 리랭킹, sibling ±2 복원
 - **Adaptive 라우팅** — 질의를 5-type으로 분류해 Dense/BM25 배수·프롬프트 분기, 비교 질의는 분해 후 검색 (분류·검증은 0ms 결정론적, LLM 호출은 4곳뿐)
-- **자기 교정 루프** — CRAG(검색 게이트 → 재작성·재검색) + Self-RAG(조항·수치 검증) + Critic(실패 5분류 → 조건부 재생성)
+- **검증 + 선택적 교정** — Self-RAG 구조 검증(조항·수치, 0ms)으로 hard_fail 플래그. CRAG·Critic 재생성은 **측정이 요구할 때만**(opt-in, 기본 off) — [설계 회고](docs/design-retrospective.md)
 - **구조 보존 인제스천** — ODL로 다단 레이아웃·읽기순서 보존, PaddleOCR로 스캔·이미지 표를 HTML 구조 복원 → 마크다운 그리드
 - **4층 가드레일** — PII · Injection · Grounding(citation) · Output leak (OWASP LLM Top-10 매핑)
 - **12-섹션 서빙 trace** — 요청마다 route·CRAG·검증·critic·latency 기록 → 집계·SLA·회귀 감지
-- **정직한 평가** — RAGAS Triad(judge 분리로 self-preference 회피) + 못 잡는 케이스·의도적 미구현까지 문서화
+- **평가 기반 자생 개선** — RAGAS Triad + retrieval 지표로 측정 → 컨텍스트 품질 개선 또는 파인튜닝으로 반영하는 루프(judge 분리로 self-preference 회피). 못 잡는 케이스·의도적 미구현까지 정직하게 문서화
 
 ## 빠른 시작
 
@@ -311,8 +309,5 @@ docker compose exec api uv run pytest tests/ -v -m integration      # E2E (docke
 | [docs/pipeline.md](docs/pipeline.md) | RAG 서빙 (라우팅, CRAG, 프롬프트 분기, Self-RAG, Critic) |
 | [docs/chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR 3단계 필터, sibling 복원) |
 | [docs/roadmap.md](docs/roadmap.md) | 모델 고도화 로드맵 (측정 → 조건부 대조학습·LoRA) |
+| [docs/design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 레이어별 실측 가성비, 표준 RAG 대비, 평가 기반 개선 전략 |
 | [CLAUDE.md](CLAUDE.md) | AI 에이전트 작업 지침 (명령어, 연쇄 수정, 도메인 용어) |
-
-## 라이선스
-
-[MIT](LICENSE) © 2026 최덕진 (DJ. CHOI)
