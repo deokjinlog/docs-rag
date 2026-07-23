@@ -1,7 +1,7 @@
 [project]
 name = "docs-rag"
 version = "0.1.0"
-description = "문서 AI 처리 시스템"
+description = "검증까지 내장한 한국어 문서 RAG 파이프라인 — Hybrid 검색(BGE-M3+BM25+RRF) · CRAG · Self-RAG · Critic 재생성 · RAGAS 평가"
 authors = [{name = "DJ.CHOI"}]
 requires-python = ">=3.10"
 dependencies = [
