@@ -27,35 +27,23 @@
 > 차별점은 *"동작하는 RAG"* 가 아니라 **"틀렸을 때 스스로 알고, 무엇을 못 하는지 정직하게 문서화한 RAG"** 다. 평가 지표 · 아직 못 잡는 케이스 · 의도적 미구현과 도입 트리거까지 공개한다 ([설계 철학과 한계](#설계-철학과-한계)).
 
 ```mermaid
-flowchart TD
-    subgraph 수집["수집 — Celery 비동기 체인 (상태코드 기반 재처리)"]
-        A[PDF 입력] --> B["extract<br/>ODL: docling-fast → Java fallback<br/>PDF → Markdown + 이미지"]
-        B --> C["ocr<br/>PaddleOCR PP-StructureV3<br/>표 → HTML → 마크다운 그리드"]
-        C --> D["chunk<br/>정규화 + 룰베이스 청킹<br/>heading 경계 · 참조 추적 · sibling"]
-        D --> E[("PostgreSQL<br/>청크 원본 + 계층·참조 메타")]
-        E --> F["embed<br/>BGE-M3 1024d · Cosine · INT8"]
-        F --> G[("Qdrant<br/>Dense + BM25")]
-    end
-    subgraph 서빙["서빙 — POST /answer (lean 기본 경로)"]
-        Q[사용자 질의] --> R["라우팅 + 하이브리드 검색<br/>Dense + BM25 → RRF → Reranker"]
-        R --> U["프롬프트 분기 → vLLM Qwen3-14B"]
-        U --> V["구조 검증 (0ms)<br/>조항·수치 대조 → risk_level 플래그"]
-        V --> X[답변 + trace_id + citations]
-        R -.검색 부족 시 · opt-in.-> CRAG["CRAG 재검색"]
-        V -.기본 off · opt-in.-> CR["Critic 재생성"]
-    end
-    G -.검색 대상.-> S
+flowchart LR
+    PDF[PDF] --> ING["수집: extract · ocr · chunk · embed"] --> QD[("Qdrant<br/>Dense + BM25")]
+    Q[질의] --> RET["하이브리드 검색 + Rerank"] --> GEN["LLM 생성"] --> VER["구조 검증<br/>hard_fail 플래그"] --> ANS[답변]
+    QD -.검색.-> RET
 ```
+
+> 시스템 구성도는 [docs/architecture.md](docs/architecture.md), 서빙 분기(CRAG·Critic는 opt-in)는 [docs/pipeline.md](docs/pipeline.md).
 
 ## 핵심 특징
 
-- **하이브리드 검색** — BGE-M3 Dense + Qdrant BM25를 RRF로 융합, CrossEncoder 리랭킹, sibling ±2 복원
-- **Adaptive 라우팅** — 질의를 5-type으로 분류해 Dense/BM25 배수·프롬프트 분기, 비교 질의는 분해 후 검색 (분류·검증은 0ms 결정론적, LLM 호출은 4곳뿐)
-- **검증 + 선택적 교정** — Self-RAG 구조 검증(조항·수치, 0ms)으로 hard_fail 플래그. CRAG·Critic 재생성은 **측정이 요구할 때만**(opt-in, 기본 off) — [설계 회고](docs/design-retrospective.md)
-- **구조 보존 인제스천** — ODL로 다단 레이아웃·읽기순서 보존, PaddleOCR로 스캔·이미지 표를 HTML 구조 복원 → 마크다운 그리드
-- **4층 가드레일** — PII · Injection · Grounding(citation) · Output leak (OWASP LLM Top-10 매핑)
-- **12-섹션 서빙 trace** — 요청마다 route·CRAG·검증·critic·latency 기록 → 집계·SLA·회귀 감지
-- **평가 기반 자생 개선** — RAGAS Triad + retrieval 지표로 측정 → 컨텍스트 품질 개선 또는 파인튜닝으로 반영하는 루프(judge 분리로 self-preference 회피). 못 잡는 케이스·의도적 미구현까지 정직하게 문서화
+방향은 **단순하지만 견고하게** — 품질의 핵심(견고한 인제스천 · 검색 · 검증)에 집중하고, 복잡한 레이어는 만들되 측정이 요구할 때만 켠다.
+
+- **구조 보존 인제스천** — ODL로 다단 레이아웃·읽기순서 보존, PaddleOCR PP-StructureV3로 스캔·이미지 **표를 HTML 구조 복원 → 마크다운 그리드**. 상태코드 기반 재처리로 실패 지점부터 복구 (가장 어렵고 견고해야 할 부분)
+- **하이브리드 검색 + Rerank** — BGE-M3 Dense + Qdrant BM25 RRF 융합 + CrossEncoder 리랭킹 + sibling ±2 복원. **품질의 핵심** — 실측 rerank top-1 mean 0.85
+- **공짜 구조 검증** — Self-RAG 정규식 검증(0ms)으로 조항·수치 대조 → hard_fail 플래그. 전문가 검토 툴이라 자동 교정 대신 **근거와 함께 플래그**
+- **평가 기반 자생 개선** — RAGAS + retrieval 지표로 측정 → 컨텍스트 품질 또는 파인튜닝으로 반영하는 루프 (judge 분리로 self-preference 회피)
+- **측정으로 걸러낸 복잡도** — Adaptive 라우팅 · CRAG · Critic · 12-섹션 trace · 4층 가드레일은 **만들어 두되 트래픽·측정이 요구할 때만 켜는 opt-in**. 무엇이 왜 필요/불필요했는지 [설계 회고](docs/design-retrospective.md)에 실측 공개
 
 ## 빠른 시작
 
