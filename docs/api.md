@@ -227,25 +227,23 @@ Base URL: `/api/v1/docs-rag`
   "verification": {
     "risk_level": "hard_fail",
     "groundedness": 0.50,
-    "warnings": ["context에 없는 조항 참조: 제99조"],
-    "escalation_required": true
-  },
-  "crag_retries": 1
+    "warnings": ["context에 없는 조항 참조: 제99조"]
+  }
 }
 ```
 
 | 필드 | 조건 | 설명 |
 |------|------|------|
 | trace_id | 항상 | 요청 고유 ID (UUID v4). `/feedback` 호출 시 클라이언트가 참조 |
-| answer | 항상 | LLM 생성 답변 (think 태그 제거됨). Critic regenerate 발동 시 정정된 답변 |
+| answer | 항상 | LLM 생성 답변 (think 태그 제거됨). Critic(opt-in) 발동 시 정정된 답변 |
 | sources[].chunk_id | 항상 | Qdrant point ID — `citations[].supported_by_chunks` 매핑 키 |
 | citations | claim에 ref 매핑된 게 있을 때만 | claim별 인용 매핑 — `{claim, refs(["제43조"...]), supported_by_chunks(chunk_id 리스트)}`. 클라이언트가 inline `[1][3]` UI 구성용 (Anthropic Citations API · Perplexity 패턴) |
-| verification | warnings 있거나 escalation_required일 때 | `{risk_level, groundedness, warnings, escalation_required?}` — Self-RAG 검증 + Critic 결과 |
+| verification | warnings 있을 때 | 구조 검증은 **flag-only(기본)** — `{risk_level, groundedness, warnings}` 경고만 노출, 답변은 그대로. `escalation_required`는 Critic **opt-in(기본 off)** 시에만 |
 | verification.groundedness | **verifiable claim ≥ 1**일 때만 (절차형 답변에선 키 생략) | 0~1 스칼라 (`supported / verifiable`). 검증 가능한 claim(조항·숫자 추출된)만 분모로 — 평문 claim은 구조적으로 supported_by_chunks 강제 [] 라 분모에 넣으면 절차형 답변이 0점으로 깔리는 분모 결함 회피. RAGAS faithfulness · Azure AI Foundry Groundedness 패턴 |
-| verification.escalation_required | retrieval_gap / semantic_mismatch에서만 | `true`면 critic이 regenerate 금지 판정 (재생성해도 못 고침). 클라이언트가 재질문 유도·refusal UI로 활용 |
+| verification.escalation_required | Critic opt-in 시, retrieval_gap / semantic_mismatch에서만 | `true`면 재생성 금지 판정 — 클라이언트가 재질문 유도·refusal UI로 활용 |
 | crag_retries | 재검색 시만 | CRAG 재시도 횟수 (0이면 미포함) |
 
-**Critic 동작 상세** (failure_type, regenerate_improved 등)는 `data/eval/trace/<YYYYMMDD>/traces.jsonl`의 `critic` 필드 참조. 응답에는 슬림 projection만 노출. 자세한 분기 로직은 [pipeline.md](pipeline.md#4-self-rag-검증) 섹션 4 참조.
+**Critic 재생성은 기본 off (opt-in)** — 실측상 hard_fail 대부분이 오탐이라 자동 교정이 무의미([design-retrospective §1.5](design-retrospective.md)). 켰을 때의 failure_type·분기 상세는 [pipeline.md](pipeline.md) 섹션 4 참조.
 
 ### 검색 결과 없음
 
