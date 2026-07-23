@@ -43,7 +43,7 @@ flowchart LR
 - **하이브리드 검색 + Rerank** — BGE-M3 Dense + Qdrant BM25 RRF 융합 + CrossEncoder 리랭킹 + sibling ±2 복원. **품질의 핵심** — 실측 rerank top-1 mean 0.85
 - **공짜 구조 검증** — Self-RAG 정규식 검증(0ms)으로 조항·수치 대조 → hard_fail 플래그. 전문가 검토 툴이라 자동 교정 대신 **근거와 함께 플래그**
 - **평가 기반 자생 개선** — RAGAS + retrieval 지표로 측정 → 컨텍스트 품질 또는 파인튜닝으로 반영하는 루프 (judge 분리로 self-preference 회피)
-- **측정으로 걸러낸 복잡도** — Adaptive 라우팅 · CRAG · Critic · 12-섹션 trace · 4층 가드레일은 **만들어 두되 트래픽·측정이 요구할 때만 켜는 opt-in**. 무엇이 왜 필수/유예인지는 [필수 파이프라인·판단기준](docs/essential-pipeline.md)과 [설계 회고(실측)](docs/design-retrospective.md)에 공개
+- **측정으로 걸러낸 복잡도** — Adaptive 라우팅 · CRAG · Critic · 12-섹션 trace · 4층 가드레일은 **만들어 두되 트래픽·측정이 요구할 때만 켜는 opt-in**. 무엇이 왜 필수/유예인지는 [설계 회고 — 판단기준·실측](docs/design-retrospective.md)에 공개
 
 ## 빠른 시작
 
@@ -298,7 +298,6 @@ docker compose exec api uv run pytest tests/ -v -m integration      # E2E (docke
 | [docs/api.md](docs/api.md) | REST 엔드포인트 상세 (스키마, 에러 코드, 멱등성) |
 | [docs/pipeline.md](docs/pipeline.md) | RAG 서빙 (라우팅, CRAG, 프롬프트 분기, Self-RAG, Critic) |
 | [docs/chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR 3단계 필터, sibling 복원) |
-| [docs/essential-pipeline.md](docs/essential-pipeline.md) | 필수 파이프라인 — 판단기준(필수/유예)과 최소 설계 |
-| [docs/design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 레이어별 실측 가성비, 표준 RAG 대비, 평가 기반 개선 전략 |
+| [docs/design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 판단기준(필수/유예)·레이어별 실측·표준 RAG 대비·개선 전략 |
 | [docs/roadmap.md](docs/roadmap.md) | 모델 고도화 로드맵 (측정 → 조건부 대조학습·LoRA) |
 | [CLAUDE.md](CLAUDE.md) | AI 에이전트 작업 지침 (명령어, 연쇄 수정, 도메인 용어) |

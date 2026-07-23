@@ -8,8 +8,8 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
 ## 기술 스택
 - Python 3.10, FastAPI, uv, Celery + RabbitMQ
 - BGE-M3 1024차원 (임베딩), BGE-Reranker-v2-m3 (리랭킹), Qdrant (벡터DB, INT8 양자화)
-- PostgreSQL (메타), vLLM + Qwen3-14B-AWQ (LLM), PaddleOCR PP-StructureV3 (layout+table+formula+OCR)
-- Docker Compose, Ubuntu 24.04 GPU 서버 RTX PRO 6000 Blackwell ×4 (각 96GB), CUDA 13.1
+- PostgreSQL (메타), vLLM + Qwen3 (LLM — 로컬 8GB는 Qwen3-4B-AWQ, 평가는 14B 구성), PaddleOCR PP-StructureV3 (layout+table+formula+OCR)
+- Docker Compose, 로컬 RTX 4060 Laptop 8GB · WSL2(Ubuntu) · 16-core (평가 수치는 대형 GPU + Qwen3-14B 구성)
 
 ## 디렉토리 구조
 - `src/v1/router.py`    : FastAPI 엔드포인트 정의 + 의존성 주입 + PII guard (얇은 진입점)
@@ -63,7 +63,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | api | 8002 | 0 | FastAPI (검색/RAG) + BGE-M3/Reranker |
 | celery | - | 0 | Celery Worker (extract→ocr→chunk→embed) + BGE-M3/Reranker |
 | flower | 5555 | - | Celery 모니터링 UI |
-| vllm | 8000 | 0 | Qwen3-14B-AWQ (TP=1, utilization 0.30, KV cache fp8) |
+| vllm | 8000 | 0 | Qwen3-4B-AWQ (KV fp8, 8GB 프로파일) — OpenAI 호환 API로 교체 가능 |
 | paddle | 5003 | **CPU** | PP-StructureV3 (Blackwell sm_120 미지원으로 CPU 고정) |
 | odl | 5002 | - | PDF→Markdown 변환 (FastAPI 래퍼:5002 + docling-fast:5010) |
 | rabbitmq | 5672/15672 | - | 메시지 큐 |
@@ -142,7 +142,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 - **Output Guard (leak + profanity)**: `guards/output.py` `_LEAK_PATTERNS`·`_PROFANITY_PATTERNS` + `guards/__init__.py` export + `router.py` answer LLM 호출 직후 + critic regenerate 후 양쪽 sanitize_output 호출 (threats 누적) + `trace.py` `output_guard` 필드 + `trace_summary.py` Section 12 (`_aggregate_output_guard` + `_render_output_guard` + AGGREGATORS/RENDERERS 등록) + `tests/guards/test_output.py` — 총 6곳. leak은 silent 제거, 욕설은 라벨만 (PII 마스킹과 동일 정책)
 - **Citation 응답 노출**: `rag/grader.py` `verify_answer["claims"][i]["supported_by_chunks"]`(이미 산출됨) + `rag/search.py` `format_sources`에 `chunk_id` 키 + `router.py` answer endpoint citations projection (claim별 ref + supported_by_chunks 매핑, no_refs claim 제외) + `docs/api.md` 응답 스키마 — 총 4곳. 데이터는 verify_answer가 매 요청 자동 산출, projection만 추가
 - **Groundedness Score**: `rag/grader.py` claim 단위 `supported_by_chunks` 산출(기존) + `router.py` `_verification_summary` 헬퍼 (supported / **verifiable** ratio = 0~1, verifiable=0이면 키 생략) + `rag/trace.py` `verification.groundedness` 필드 + `trace_summary.py` `_aggregate_verification` percentile + `_aggregate_provenance` coverage_pct도 verifiable 분모 + `_render_verification` 출력 + `docs/api.md`·`docs/pipeline.md` 응답 스키마 + `tests/rag/test_trace_record.py` 두 케이스(verifiable≥1 / verifiable=0) — 총 7곳. RAGAS faithfulness 패턴 — 평문 claim 분모 결함 회피가 핵심
-- **Critic dispatch**: `router.py` `answer()` (verify_answer 직후 분기) + `rag/grader.py` `classify_failure`/`build_hint` + `rag/prompts.py` `REGENERATE_WITH_HINT_PROMPT` + `rag/__init__.py` exports — 신규 failure type 추가 시 4곳 모두 갱신. **Feature flag**: `CRITIC_DISPATCH_ENABLED=false`로 즉시 비활성화 (regenerate improved rate가 지속적으로 낮으면 비활성 검토)
+- **Critic dispatch**: `router.py` `answer()` (verify_answer 직후 분기) + `rag/grader.py` `classify_failure`/`build_hint` + `rag/prompts.py` `REGENERATE_WITH_HINT_PROMPT` + `rag/__init__.py` exports — 신규 failure type 추가 시 4곳 모두 갱신. **Feature flag**: `CRITIC_DISPATCH_ENABLED` **기본 false (opt-in)** — 실측 hard_fail 6/6 오탐이라 auto-regenerate 무의미(design-retrospective §1.5). 필요 시 true.
 - **Feedback endpoint**: `schema.sql` (tb_query_feedback) + `models.py` (QueryFeedback) + `repository.py` (FeedbackRepository) + `schemas.py` (FeedbackRequest/Response) + `router.py` (/feedback endpoint + `trace_id` 응답 노출 양쪽: `/answer`·`/retrieve`) + `eval_ragas.py` (synthetic feedback 매핑) + `trace_summary.py --feedback` (집계) — 총 7곳 동시 수정. `trace_id` 누락 시 클라이언트가 참조 못 함
 - **Synthetic feedback 매핑 임계값**: `eval_ragas.py` `map_score_to_signal` (0.7/0.4 경계). 변경 시 과거 데이터의 signal 분포가 달라지므로 `trace_summary.py --feedback` 집계 해석도 같이 재검토
 
