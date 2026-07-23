@@ -21,14 +21,14 @@
 
 ---
 
-약관·법령·매뉴얼 같은 **한국어 구조화 PDF**를 등록하면 — 자동으로 추출·OCR·청킹·임베딩해서 인덱싱하고, **하이브리드 검색 + Rerank + LLM 답변 + 0ms 구조 검증(hard_fail 플래그)** 으로 답하는 파이프라인. 자기 교정(CRAG·Critic)도 만들었지만 **측정해보니 값을 못 해서 opt-in(기본 off)** 으로 뺐다. 도메인 비종속 — 라우팅 정규식/프롬프트만 바꾸면 재사용된다.
+약관·법령·매뉴얼 같은 **한국어 구조화 PDF**를 등록하면 — 자동으로 추출·OCR·청킹·임베딩해서 인덱싱하고, **하이브리드 검색 + Rerank + LLM 답변 + 0ms 근거 대조(플래그)** 로 답하는 파이프라인. 자기 교정(CRAG·Critic)도 만들었지만 **측정해보니 값을 못 해서 opt-in(기본 off)** 으로 뺐다. 도메인 비종속 — 라우팅 정규식/프롬프트만 바꾸면 재사용된다.
 
 > 차별점은 화려한 기능이 아니라 **판단**이다. 이 repo는 완성된 제품이라기보다 *"이렇게 설계했고, 무엇을 왜 넣고 뺐는지"* 를 정직하게 남긴 기록에 가깝다 — 복잡한 레이어를 다 만들어 본 뒤 값을 못 하는 건 걷어냈다(opt-in화). 판단 근거는 [설계 회고](docs/design-retrospective.md).
 
 ```mermaid
 flowchart LR
     PDF[PDF] --> ING["수집: extract · ocr · chunk · embed"] --> QD[("Qdrant<br/>Dense + BM25")]
-    Q[질의] --> RET["하이브리드 검색 + Rerank"] --> GEN["LLM 생성"] --> VER["구조 검증<br/>hard_fail 플래그"] --> ANS[답변]
+    Q[질의] --> RET["하이브리드 검색 + Rerank"] --> GEN["LLM 생성"] --> VER["구조 검증<br/>근거 대조 플래그"] --> ANS[답변]
     QD -.검색.-> RET
 ```
 
@@ -40,7 +40,7 @@ flowchart LR
 
 - **구조 보존 문서 처리** — ODL로 다단 레이아웃·읽기순서 보존, PaddleOCR로 스캔·이미지 **표를 HTML 구조 복원 → 마크다운 그리드**. 상태코드 기반 재처리로 실패 지점부터 복구
 - **하이브리드 검색 + Rerank** — BGE-M3 Dense + Qdrant BM25를 RRF로 융합 + CrossEncoder 리랭킹 + sibling 복원
-- **공짜 구조 검증** — 답변의 조항·수치를 정규식으로 context와 대조(0ms) → hard_fail이면 **근거와 함께 플래그**. 자동 교정 대신 전문가 검토
+- **공짜 근거 대조** — 답변이 인용한 조항·수치를 정규식으로 context와 대조(0ms) → 근거 밖 인용이면 **함께 플래그**. 자동 교정 대신 전문가 검토 (현재는 retrieval-gap 탐지에 가까움 — [회고](docs/design-retrospective.md))
 - **측정 기반 개선** — 평가문항(gold set)을 만들어 RAGAS·retrieval 지표로 측정 → 병목(검색/생성)을 진단해 그 축만 개선
 - **정직한 설계 기록** — 라우팅·CRAG·Critic·풀 trace·가드레일은 만들되 **측정이 요구할 때만 opt-in**. 무엇을 왜 넣고 뺐는지 [설계 회고](docs/design-retrospective.md)에 공개
 
@@ -77,7 +77,7 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 
 ### 서빙 — `POST /answer`
 
-**라우팅 → 하이브리드 검색 → Rerank → LLM 생성 → 0ms 구조 검증(플래그)** 순. hard_fail이어도 답은 그대로 반환하고 **경고만** 붙인다(전문가 검토용). CRAG 재검색·Critic 재생성은 **opt-in, 기본 off** — 단계별 상세는 [pipeline.md](docs/pipeline.md).
+**라우팅 → 하이브리드 검색 → Rerank → LLM 생성 → 0ms 근거 대조(플래그)** 순. 근거 밖 참조가 있어도 답은 그대로 반환하고 **경고만** 붙인다(전문가 검토용). CRAG 재검색·Critic 재생성은 **opt-in, 기본 off** — 단계별 상세는 [pipeline.md](docs/pipeline.md).
 
 ## 평가 (설계)
 
