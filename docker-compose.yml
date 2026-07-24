@@ -63,8 +63,8 @@ services:
     command: >
       --model /model
       --tensor-parallel-size 1
-      --max-model-len 4096
-      --gpu-memory-utilization 0.40
+      --max-model-len 8192
+      --gpu-memory-utilization 0.80
       --kv-cache-dtype fp8_e4m3
     restart: unless-stopped
 
