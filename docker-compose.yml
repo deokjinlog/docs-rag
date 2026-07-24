@@ -115,13 +115,7 @@ services:
       - ./data:/app/data
       - ./model:/app/model
       - ./tests:/app/tests   # docker exec uv run pytest용 — host 변경 즉시 반영 (conftest.py 포함)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
+    # 임베더·리랭커는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일, GPU는 vLLM 전용)
     depends_on:
       - postgres
       - qdrant
@@ -143,13 +137,7 @@ services:
       - ./src:/app/src
       - ./data:/app/data
       - ./model:/app/model
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
+    # 임베더는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일)
     depends_on:
       - postgres
       - qdrant
