@@ -52,7 +52,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./model/Qwen3-4B-AWQ:/model   # 로컬 8GB 프로파일 — 소형 모델 (scripts/download_models.sh)
+      - ./model/llm:/model   # 소형 AWQ LLM (scripts/download_models.sh) — GPU 독점
     deploy:
       resources:
         reservations:
@@ -106,9 +106,10 @@ services:
     environment:
       # Feedback 수집 토글 — 점진적 롤아웃 / 인프라 문제 시 즉시 비활성화 ("false")
       FEEDBACK_ENABLED: "${FEEDBACK_ENABLED:-true}"
-      # Critic dispatch 토글. regenerate improved rate가 지속적으로 낮으면
-      # "false"로 바꿔 즉시 비활성화 (코드 변경·재배포 불필요)
-      CRITIC_DISPATCH_ENABLED: "${CRITIC_DISPATCH_ENABLED:-true}"
+      # Critic dispatch 토글 — 기본 off (실측 hard_fail 대부분 오탐, design-retrospective §1.5)
+      CRITIC_DISPATCH_ENABLED: "${CRITIC_DISPATCH_ENABLED:-false}"
+      # 임베더·리랭커를 CPU로 → GPU는 vLLM 독점 (8GB 프로파일)
+      CUDA_VISIBLE_DEVICES: "-1"
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -135,6 +136,9 @@ services:
     command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=10 -E
     working_dir: /app/src
     env_file: .env
+    environment:
+      # 임베더를 CPU로 → GPU는 vLLM 독점 (8GB 프로파일). 인제스천은 오프라인이라 CPU로 충분
+      CUDA_VISIBLE_DEVICES: "-1"
     volumes:
       - ./src:/app/src
       - ./data:/app/data

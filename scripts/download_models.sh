@@ -11,8 +11,8 @@ set -euo pipefail
 
 EMBED_REPO="${EMBED_REPO:-BAAI/bge-m3}"
 RERANK_REPO="${RERANK_REPO:-BAAI/bge-reranker-v2-m3}"
-# 8GB GPU용 소형 LLM (AWQ 4-bit). 정확한 repo id는 환경에 맞게 조정.
-LLM_REPO="${LLM_REPO:-Qwen/Qwen3-4B-AWQ}"
+# 소형 LLM (AWQ). 임베더·리랭커는 CPU라 GPU는 vLLM 독점 → 3B 넉넉, 더 작게 1.5B도 OK.
+LLM_REPO="${LLM_REPO:-Qwen/Qwen2.5-3B-Instruct-AWQ}"
 
 mkdir -p model
 
@@ -22,7 +22,7 @@ huggingface-cli download "$EMBED_REPO" --local-dir model/BGE-M3
 echo "▶ 리랭커  : $RERANK_REPO → model/bge-reranker-v2-m3"
 huggingface-cli download "$RERANK_REPO" --local-dir model/bge-reranker-v2-m3
 
-echo "▶ LLM     : $LLM_REPO → model/Qwen3-4B-AWQ"
-huggingface-cli download "$LLM_REPO" --local-dir model/Qwen3-4B-AWQ
+echo "▶ LLM     : $LLM_REPO → model/llm"
+huggingface-cli download "$LLM_REPO" --local-dir model/llm
 
 echo "✓ 완료 → ./model/  (이제 docker compose up 가능)"
