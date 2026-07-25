@@ -27,6 +27,9 @@ LLM_CONFIG = {
     "model": os.environ["LLM_MODEL"],
     "api_key": os.environ.get("LLM_API_KEY", "no-key"),
     "options": {"temperature": 0.0, "top_p": 0.95, "max_tokens": 2048, "seed": 42},
+    # max_context는 vLLM --max-model-len 과 반드시 일치. 로컬 8GB + Qwen3-4B-AWQ는
+    # 가중치가 작아 KV 여유가 충분 → 8192 가능(7B는 KV 부족으로 3072가 상한이라 RAG 근거가
+    # 잘려 품질↓ 이었음). max_tokens+context+프롬프트 합이 이 값을 넘으면 vLLM이 400.
     "max_context": 8192,
     "safety_margin": 256,
 }

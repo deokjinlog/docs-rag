@@ -199,8 +199,11 @@ def run_ragas_eval(results):
         ))
         judge_label = f"openai/{judge_model}"
     else:
-        print("\n⚠ OPENAI_API_KEY 미설정 — vLLM(Qwen3) judge로 fallback.")
-        print("  서빙 LLM과 동일 계열이라 self-preference bias 위험. 점수는 참고용으로만 사용.")
+        # 실제 서빙 중인 로컬 모델명. vLLM API상 이름은 "/model"이라 라벨엔 사람이 읽는
+        # 이름을 쓴다. 모델 교체 시 LOCAL_LLM_NAME 환경변수로 오버라이드 (기본은 현 로컬 모델).
+        local_llm_name = os.environ.get("LOCAL_LLM_NAME", "Qwen3-4B-AWQ")
+        print(f"\n⚠ OPENAI_API_KEY 미설정 — 로컬 vLLM judge({local_llm_name})로 fallback.")
+        print("  serving과 동일 모델이면 self-preference bias 위험. 점수는 참고용으로만 사용.")
         print("  운영 평가는 OPENAI_API_KEY 설정 후 재실행 권장 (Triad 24건 ≈ $0.05).\n")
         judge_llm = LangchainLLMWrapper(ChatOpenAI(
             model="/model",
@@ -210,7 +213,7 @@ def run_ragas_eval(results):
             max_tokens=2048,
             timeout=120,
         ))
-        judge_label = "vllm/qwen3-14b-awq (biased fallback)"
+        judge_label = f"vllm/{local_llm_name} (self-judge, biased)"
 
     # Embeddings는 RAGAS 내부 의미 비교용 — judge LLM과 무관해서 BGE-M3 그대로 (로컬, 무료).
     judge_embeddings = LangchainEmbeddingsWrapper(HuggingFaceEmbeddings(
@@ -357,6 +360,15 @@ def main():
              "수집·집계 파이프라인 동작 확인 목적만. 실 UI 통합 시 제거.",
     )
     args = parser.parse_args()
+
+    # 평가 질문셋: 기본은 위 EVAL_QUESTIONS(원본 24문항, 실 코퍼스용). 로컬에 다른 문서를
+    # 적재해 검증할 땐 EVAL_QUESTIONS_FILE=<경로>로 교체 (JSON 배열, 같은 스키마).
+    global EVAL_QUESTIONS
+    _qfile = os.environ.get("EVAL_QUESTIONS_FILE")
+    if _qfile:
+        with open(_qfile, encoding="utf-8") as f:
+            EVAL_QUESTIONS = json.load(f)
+        print(f"질문셋 교체: {_qfile} ({len(EVAL_QUESTIONS)}문항)\n")
 
     os.makedirs("data/eval", exist_ok=True)  # 결과 저장 경로 보장 (import 부작용 회피, main에서만 호출)
 

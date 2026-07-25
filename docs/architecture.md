@@ -37,7 +37,7 @@
 ```
 
 - PostgreSQL, Qdrant 모두 docker-compose 내부에서 관리. 데이터는 named volume으로 영속화.
-- **vLLM (로컬 8GB 프로파일)**: 단일 GPU, `Qwen3-4B-AWQ`, `--kv-cache-dtype fp8_e4m3`, `--max-model-len`을 8GB에 맞춰 축소(예: 4096), `--gpu-memory-utilization`은 임베더·리랭커와 VRAM을 나눠 쓰도록 조정. **README '평가'의 RAGAS·지연 수치는 대형 GPU + `Qwen3-14B-AWQ` 구성에서 측정** — 로컬은 동일 파이프라인을 소형 모델로 구동(생성 품질은 모델 크기만큼 하락 예상). OpenAI 호환 API LLM으로 교체 시 로컬 LLM VRAM 0.
+- **vLLM (로컬 8GB 프로파일)**: 단일 GPU, `Qwen3-4B-AWQ`, `--kv-cache-dtype fp8_e4m3`, `--max-model-len 8192`, `--gpu-memory-utilization 0.80`. 임베더·리랭커를 CPU로 뺐기에 GPU는 vLLM 독점. **모델 크기 선택이 곧 컨텍스트 선택**: 4B는 KV 여유가 커서 8192 확보(RAG 근거 충분), 7B급은 8GB에서 KV가 부족해 컨텍스트가 3072까지 줄고 검색 근거가 잘려 RAG 품질↓(실측). **README '평가'의 RAGAS·지연 수치는 대형 GPU + `Qwen3-14B-AWQ` 구성에서 측정** — 로컬은 동일 파이프라인을 소형 모델로 구동(생성 품질은 모델 크기만큼 하락 예상). OpenAI 호환 API LLM으로 교체 시 로컬 LLM VRAM 0.
 - **GPU 배치**: 단일 GPU(RTX 4060 8GB)에 임베더(BGE-M3)·리랭커·vLLM(소형)·Qdrant 인덱싱을 공유. VRAM이 빠듯하면 LLM을 API로 빼거나 임베더를 CPU로 오프로드. 다중 GPU 대형 구성은 트래픽↑ 시 확장 지점.
 - ODL 컨테이너는 2개 프로세스를 동시 실행:
   - **FastAPI 래퍼** (:5002): `odl/server.py`. Worker가 HTTP로 호출하는 진입점.

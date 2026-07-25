@@ -52,7 +52,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./model/llm:/model   # 소형 AWQ LLM (scripts/download_models.sh) — GPU 독점
+      - ./model/Qwen3-4B-AWQ:/model   # 로컬 LLM (scripts/download_models.sh) — GPU 독점. 모델 교체 시 이 경로 + .env LLM_TOKENIZER_PATH 동시 변경
     deploy:
       resources:
         reservations:

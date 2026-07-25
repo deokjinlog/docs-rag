@@ -70,7 +70,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | postgres | 5432 | - | PostgreSQL (compose 내부 volume) |
 | qdrant | 6333/6334 | 0 | Qdrant 벡터DB (GPU 인덱싱) |
 
-**GPU 배치 정책**: 현재 모든 GPU 의존 서비스가 GPU 0에 통합. 1~3번은 비어있음 (향후 워크로드 분산 또는 paddle GPU 복귀 시 활용). vLLM은 `--gpu-memory-utilization 0.30`으로 약 29GB만 예약.
+**GPU 배치 정책**: 단일 GPU(RTX 4060 8GB). 임베더·리랭커는 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.
 
 ## 상태 흐름
 ```
