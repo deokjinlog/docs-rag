@@ -135,4 +135,5 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 | [docs/chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR, sibling 복원) |
 | [docs/design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 판단기준(필수/유예)·초기 실측·개선 전략 |
 | [docs/roadmap.md](docs/roadmap.md) | 로드맵 (측정 → 조건부 대조학습·LoRA) |
+| [docs/verification-redesign.md](docs/verification-redesign.md) | 검증 재설계 (존재 대조 → 의미 함의, 측정 게이트) |
 | [CLAUDE.md](CLAUDE.md) | AI 에이전트 작업 지침 |
