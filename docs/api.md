@@ -227,7 +227,7 @@ Base URL: `/api/v1/docs-rag`
   "verification": {
     "risk_level": "hard_fail",
     "groundedness": 0.50,
-    "warnings": ["context에 없는 조항 참조: 제99조"]
+    "warnings": ["인용 조항이 검색 근거에 없음(검색 격차 가능): 제99조"]
   }
 }
 ```

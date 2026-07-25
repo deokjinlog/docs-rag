@@ -503,15 +503,21 @@ def _build_warnings(
     missing_appendices: list[str],
     numeric_mismatches: list[NumericFact],
 ) -> list[str]:
-    """응답의 warnings 필드 — 사람이 읽는 경고 메시지."""
+    """응답의 warnings 필드 — 사람이 읽는 경고 메시지.
+
+    문구 주의: 이 플래그는 '환각'이 아니라 '인용 참조가 검색 상위(context)에 없음'을 뜻한다.
+    실측(design-retrospective §1.5) hard_fail 6/6이 오탐이었고 전부 검색 격차(문서엔 있는데
+    top-k에 안 담김)였으므로, 환각을 단정하지 않는 표현을 쓴다. 스코프 3-state 재설계는
+    docs/verification-redesign.md 참조(트리거 시 구현).
+    """
     warnings: list[str] = []
     if missing_articles:
-        warnings.append(f"context에 없는 조항 참조: {', '.join(missing_articles)}")
+        warnings.append(f"인용 조항이 검색 근거에 없음(검색 격차 가능): {', '.join(missing_articles)}")
     if missing_appendices:
-        warnings.append(f"context에 없는 별표/부칙/서식: {', '.join(missing_appendices)}")
+        warnings.append(f"인용 별표/부칙/서식이 검색 근거에 없음(검색 격차 가능): {', '.join(missing_appendices)}")
     if numeric_mismatches:
         samples = ", ".join(n.original for n in numeric_mismatches[:5])
-        warnings.append(f"context에 없는 숫자/기간/금액: {samples}")
+        warnings.append(f"인용 숫자/기간/금액이 검색 근거와 불일치/미확인: {samples}")
     return warnings
 
 
