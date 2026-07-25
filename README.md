@@ -80,7 +80,9 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 |---|---|
 | 생성 품질 | RAGAS Faithfulness · Answer Relevancy · Context Utilization |
 | 검색 품질 | Recall@k · MRR · nDCG (gold chunk 라벨) |
-| 라우팅 | query_type 정확도 |
+| 라우팅 (참고) | query_type 분포 · 오분류 spot-check |
+
+> 라우팅은 *"유형이 라벨과 맞나"*(주관 라벨 대비라 객관 정답률이 아님)보다 *"라우팅이 실제로 품질을 올리나"*가 본질이고, 후자는 아직 미검증이다 — [설계 회고](docs/design-retrospective.md) 참조.
 
 **측정 → 병목 진단(검색이면 청킹·리랭크 / 생성이면 프롬프트·파인튜닝) → 재측정.** 실측 기록은 [설계 회고](docs/design-retrospective.md), 실행 계획은 [로드맵](docs/roadmap.md).
 
