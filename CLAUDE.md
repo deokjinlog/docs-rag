@@ -43,8 +43,8 @@ docker compose logs --tail=20 api               # 최근 20줄
 docker compose ps                               # 서비스 상태
 
 # DB (host에 psql 없으면 컨테이너 경유)
-cat db/schema.sql | docker compose exec -T postgres psql -U lawuser -d ai_parser
-docker compose exec postgres psql -U lawuser -d ai_parser -c "\d tb_query_feedback"
+cat db/schema.sql | docker compose exec -T postgres psql -U docsrag -d docsrag
+docker compose exec postgres psql -U docsrag -d docsrag -c "\d tb_query_feedback"
 
 # 단위 테스트 (integration 마크는 자동 skip)
 uv run pytest tests/ -v                                              # rag + guards 단위 (host)
@@ -67,7 +67,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | paddle | 5003 | **CPU** | PP-StructureV3 (Blackwell sm_120 미지원으로 CPU 고정) |
 | odl | 5002 | - | PDF→Markdown 변환 (FastAPI 래퍼:5002 + docling-fast:5010) |
 | rabbitmq | 5672/15672 | - | 메시지 큐 |
-| postgres | 5432 | - | PostgreSQL (compose 내부 volume) |
+| postgres | **5433**→5432 | - | PostgreSQL (외부 5433, 내부 5432; DB·user=`docsrag`) |
 | qdrant | 6333/6334 | 0 | Qdrant 벡터DB (GPU 인덱싱) |
 
 **GPU 배치 정책**: 단일 GPU(RTX 4060 8GB). 임베더·리랭커는 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.

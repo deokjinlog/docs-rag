@@ -3,11 +3,11 @@ services:
     image: postgres:16.6
     container_name: docs-rag-postgres
     environment:
-      POSTGRES_DB: ai_parser
-      POSTGRES_USER: lawuser
+      POSTGRES_DB: docsrag
+      POSTGRES_USER: docsrag
       POSTGRES_PASSWORD: "${PG_PASSWORD}"
     ports:
-      - "5432:5432"
+      - "5433:5432"   # 외부(DBeaver 등)=5433, 내부 앱은 postgres:5432 — homie postgres(5432) 충돌 회피
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
