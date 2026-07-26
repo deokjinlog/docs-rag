@@ -11,9 +11,11 @@ import re
 import sys
 import json
 
-# 조 정의: 줄머리의 "제N조 【제목】". 약관 조 제목은 전각 【】를 쓰고, 외부 법령 참조는
-# 반각/소괄호(의료법 제3조(의료기관))를 쓴다 — 그래서 【】 전용으로 제한하면 외부법령
-# 제N조(…)가 조로 오탐되지 않는다. 【제목】 앵커는 조 '정의'와 본문 중 조 '참조'도 구분.
+# 조 정의: 줄머리의 "제N조 【제목】" (전각 【】 프로파일 — 라이나 계열).
+# 회사별로 괄호가 다르다: 라이나=전각【】, New치아·다이렉트=반각( ). 반각은 조 정의와
+# 인라인 참조에 모두 쓰여 단일 정규식이 참조까지 다 잡으므로(실측: New치아 222조),
+# 프로파일을 분리한다. 전각은 인라인 참조가 반각()이라 【】-전용이 깨끗이 걸러진다.
+# → PARSER_PROFILES 로 회사/포맷별 규칙 분리 (반각 프로파일은 후속: 정의=본문 순차런).
 RE_JO = re.compile(
     r'^[#\s\-•*]*제\s*(\d+)\s*조\s*【\s*([^】]+?)\s*】',
     re.MULTILINE,
@@ -36,14 +38,17 @@ _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 
 
 def parse_clauses(md: str, product_id: str) -> list[dict]:
-    """조 경계로 분할 → 조 단위 clause 리스트. ToC 항목 스킵, 본문은 별표 전까지."""
-    app = RE_APPENDIX_START.search(md)
+    """조 경계로 분할 → 조 단위 clause 리스트. 외부법령 마스킹(위치보존) 후 탐지,
+    본문은 원본에서. ToC 항목 스킵, 본문은 별표 전까지."""
+    # 의료법 제N조 등 외부법령을 같은 길이 filler로 치환 → 위치 보존, 조 오탐 방지
+    md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
+    app = RE_APPENDIX_START.search(md_masked)
     body_end = app.start() if app else len(md)
 
     jos = []
-    for m in RE_JO.finditer(md):
-        line_end = md.find("\n", m.end())
-        rest = md[m.end(): line_end if line_end != -1 else len(md)]
+    for m in RE_JO.finditer(md_masked):
+        line_end = md_masked.find("\n", m.end())
+        rest = md_masked[m.end(): line_end if line_end != -1 else len(md_masked)]
         if RE_TOC_DOTS.search(rest):      # 목차 점선 항목 제외
             continue
         if m.start() >= body_end:         # 별표 이후는 조 아님
@@ -111,10 +116,13 @@ def main():
     # ── 검증 2개 ──
     print("\n=== 검증 ===")
     jos = [c["jo"] for c in clauses]
-    print(f"  [1] 조 개수: {len(clauses)}개 (기대 19) — {'✅' if len(clauses) == 19 else '❌'}")
+    contiguous = jos == list(range(1, len(jos) + 1))   # 1..N 연속 = 깨끗한 파싱
+    print(f"  [1] 조 {len(clauses)}개, 1..N 연속: {'✅' if contiguous else '❌ 깨짐'}")
     print(f"      조 번호: {jos}")
-    dup = len(jos) != len(set(jos))
-    print(f"      중복/누락: {'❌ 있음' if dup else '없음'}")
+    if not contiguous:
+        missing = sorted(set(range(1, max(jos) + 1)) - set(jos)) if jos else []
+        dups = sorted({j for j in jos if jos.count(j) > 1})
+        print(f"      누락: {missing} · 중복: {dups}")
 
     # 의료법 제3조 오탐 검증: 제3조(입원 정의) 본문에 '의료법 제3조'가 있는데,
     # extract_refs가 이를 약관 제3조 자기참조로 안 잡고 걸러내는지.
