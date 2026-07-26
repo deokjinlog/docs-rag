@@ -448,5 +448,5 @@ query 내용에 따라 자동 분류:
 | structured_lookup | BM25 heavy (x3/x8) | 원문 인용 | "제43조", "별표 1", "Section 4" |
 | interpretation | Dense heavy (x8/x3) | IRAC 구조 | "무면허운전 시 보장되나요?" |
 | procedure | Dense heavy (x8/x3) | 단계별 설명 | "보험금 청구 방법" |
-| comparison | Dense heavy (x8/x3) + Query Decomposition | 비교표 | "1종과 2종 차이" |
+| comparison | Dense heavy (x8/x3) | 비교표 | "1종과 2종 차이" |
 | simple_fact | Hybrid (x6/x6) | 간결 답변 | "보험금 지급 기준" |

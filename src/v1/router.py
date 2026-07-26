@@ -33,7 +33,6 @@ from .rag.search import (
     format_sources,
     rewrite_query,
     search_and_rerank,
-    search_comparison,
 )
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
@@ -266,13 +265,10 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
             current_query = body.query
             retry_count = 0
 
-            if route.query_type == QueryType.COMPARISON:
-                ranked = search_comparison(body.query, body.top_k, query_filter, route)
-            else:
-                ranked = search_and_rerank(
-                    current_query, body.top_k, query_filter,
-                    dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
-                )
+            ranked = search_and_rerank(
+                current_query, body.top_k, query_filter,
+                dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
+            )
 
             initial_score = float(ranked[0][1]) if ranked else None
             rec.crag["attempts"].append({
@@ -286,14 +282,11 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
                 retry_count += 1
                 api_logger.info(f"CRAG 재검색 {retry_count}/{CRAG_MAX_RETRIES}")
                 current_query = rewrite_query(current_query)
-                if original_route.query_type == QueryType.COMPARISON:
-                    ranked = search_comparison(current_query, body.top_k, query_filter, original_route)
-                else:
-                    ranked = search_and_rerank(
-                        current_query, body.top_k, query_filter,
-                        dense_factor=original_route.dense_factor,
-                        bm25_factor=original_route.bm25_factor,
-                    )
+                ranked = search_and_rerank(
+                    current_query, body.top_k, query_filter,
+                    dense_factor=original_route.dense_factor,
+                    bm25_factor=original_route.bm25_factor,
+                )
                 rec.crag["attempts"].append({
                     "attempt": retry_count,
                     "top_score": float(ranked[0][1]) if ranked else None,

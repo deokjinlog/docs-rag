@@ -70,9 +70,9 @@ _PROCEDURE_PATTERN = re.compile(
     r"|how\s+to|steps?|process|procedure"
 )
 
-# --- 비교 질의 패턴 (COMPARISON 대상, DENSE HEAVY + Query Decomposition) ---
-# 둘 이상의 개체를 비교하는 질의는 비교 대상을 각각 검색하거나
-# 비교 가능한 근거를 병렬로 모으는 과정이 필요하다 (search_comparison).
+# --- 비교 질의 패턴 (COMPARISON 대상, DENSE HEAVY) ---
+# 둘 이상을 비교하는 질의. 하이브리드 검색(DENSE_HEAVY)으로 넓게 모으고 비교 프롬프트로
+# LLM이 문맥에서 비교한다. (쿼리 분해는 제거 — SOTA상 닫힌 코퍼스엔 과설계, verification-redesign 참조)
 _COMPARISON_PATTERN = re.compile(
     r"비교|차이|다른\s*점|구별|구분|vs|versus|다른가|뭐가\s*달라"
     r"|differ|compare|distinction"
@@ -103,56 +103,6 @@ _INTERPRETATION_INSURANCE = (
 _INTERPRETATION_PATTERN = re.compile(
     _INTERPRETATION_BASE + "|" + _INTERPRETATION_INSURANCE
 )
-
-
-# --- Query Decomposition: 비교 질의를 서브쿼리로 분해 ---
-# COMPARISON classify_query가 선행 필터이므로 여기선 "쌍(pair) 추출"만 담당.
-# 접미어 리스트는 한국어 비교 질의에서 자주 나오는 분류·레벨 접미어만.
-# 커버 못 하는 패턴(접미어 불일치, 도메인 특화, 영문 자유형)은 LLM fallback이 처리.
-
-# 한국어 분류·레벨 접미어 — 도메인 비종속 common 접미어
-# 도메인별 접미어 확장이 필요하면 여기에 추가 (예: 보험 "용·플랜·병원·일당" 등)
-_PAIR_SUFFIXES = (
-    "형", "종", "안", "판", "급",          # 분류·카테고리
-    "타입", "모드", "방식", "유형",         # 방식
-    "단계", "레벨", "버전", "수준",         # 레벨
-)
-_SUFFIX_ALT = "(?:" + "|".join(_PAIR_SUFFIXES) + ")"
-
-# 전략 1: 같은 접미어 공유 (예: "기본형과 고급형", "1종과 2종", "초급과 중급")
-_PAIR_SAME_SUFFIX_PATTERN = (
-    rf"([가-힣A-Za-z0-9]+{_SUFFIX_ALT})"
-    rf"\s*[과와이랑하고]\s*"
-    rf"([가-힣A-Za-z0-9]+{_SUFFIX_ALT})"
-)
-
-# 전략 2: 명시적 비교 구분자 (예: "Python vs Java", "A 대 B")
-_PAIR_VS_PATTERN = (
-    r"([가-힣A-Za-z0-9]+)"
-    r"\s*(?:vs\.?|versus|대)\s*"
-    r"([가-힣A-Za-z0-9]+)"
-)
-
-_PAIR_PATTERN = re.compile(f"{_PAIR_SAME_SUFFIX_PATTERN}|{_PAIR_VS_PATTERN}")
-
-
-def decompose_comparison(query: str) -> list[str] | None:
-    """비교 질의를 서브쿼리로 분해. 규칙으로 잡히면 즉시 반환, 아니면 None (LLM 위임)."""
-    m = _PAIR_PATTERN.search(query)
-    if not m:
-        return None
-    # 매칭된 그룹 중 None이 아닌 쌍 추출
-    groups = m.groups()
-    pair = [g for g in groups if g is not None]
-    if len(pair) != 2:
-        return None
-    # 비교 키워드 제거 후 공통 맥락 추출
-    context_words = _COMPARISON_PATTERN.sub("", query)
-    context_words = _PAIR_PATTERN.sub("", context_words).strip()
-    # "의 가 뭔가요?" 같은 잔여 조사 정리
-    context_words = re.sub(r"^[의가은는이를을에서]\s*", "", context_words)
-    context_words = re.sub(r"\s*[가이은는을를의에서?？]+$", "", context_words)
-    return [f"{pair[0]} {context_words}".strip(), f"{pair[1]} {context_words}".strip()]
 
 
 def classify_query(query: str) -> RouteResult:

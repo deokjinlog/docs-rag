@@ -136,7 +136,7 @@ flowchart LR
 | 결정 | 내용 | 근거 |
 |---|---|---|
 | **Critic 기본 OFF** | `CRITIC_DISPATCH_ENABLED` 기본값 `false`(필요 시 켬) | §1·§3 — 14% 개선 / p95 2배 |
-| **comparison LLM 분해 우선** | rule 분해가 "1종 가 뭔가요" 오생성 → LLM 분해로 (코드 변경은 후속) | §1 |
+| **comparison 분해 제거** | rule 분해가 "1종 가 뭔가요" 오생성·2/4 refusal → wide-retrieve+비교프롬프트로 단순화 (SOTA: 닫힌 코퍼스엔 과설계) | §1 |
 | **개선은 평가 루프로** | agentic 확장 대신 측정 → 컨텍스트/파인튜닝 | §5, [roadmap.md](roadmap.md) |
 
 ## 부록 — 출처

@@ -15,7 +15,7 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
 - `src/v1/router.py`    : FastAPI 엔드포인트 정의 + 의존성 주입 + PII guard (얇은 진입점)
 - `src/v1/task/`        : Celery 태스크 (extract, ocr, chunk, embed)
 - `src/v1/rag/`         : RAG 서빙 전략 — 쿼리 라우팅·검색·리랭킹·sibling·토큰 예산·검증·critic·trace·prompts
-  - `clients.py` (Qdrant·LLM·CrossEncoder 싱글톤) / `search.py` (filter·hybrid·rerank·decompose)
+  - `clients.py` (Qdrant·LLM·CrossEncoder 싱글톤) / `search.py` (filter·hybrid·rerank)
   - `sibling.py` / `tokens.py` / `classifier.py` / `grader.py` / `prompts.py` / `trace.py`
 - `src/v1/guards/`      : Input Guard (PII 정규식 마스킹) — Guardrails 6계층 중 1계층
 - `src/v1/utils/`       : 데이터 파이프라인 유틸 (청킹, 전처리, 임베딩, OCR 래퍼)
@@ -107,8 +107,6 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 - `rerank_score` (top-1): CrossEncoder 점수 중 최상위. CRAG threshold 비교 대상
 - `CRAG_SCORE_THRESHOLD`: 재시도 발동 기준 (현재 0.3). `score_before` 이 값 미만이면 재검색
 - `score_before` / `score_after`: CRAG 재시도 전후의 top-1 rerank score
-- `decomposition.method`: COMPARISON 쿼리 분해 방식 (`rule` / `llm` / `llm_failed` / `none`)
-- `first-wins`: `search_comparison` 이 **초기 호출에서만** decomposition 기록 — CRAG 재시도의 rewritten query가 덮어쓰지 않도록
 - `risk_level`: Self-RAG 위험 등급 (`pass` / `warn` / `soft_fail` / `hard_fail`)
 - `claim-근거 매핑 coverage`: `supported_claims_count / verifiable_claims_count`. **검증 가능한 claim만 분모** (조항·숫자 추출된 것). 평문 claim은 구조적으로 supported_by_chunks 강제 [] 라 분모에 넣으면 절차/해석 답변이 0%로 깔리는 분모 결함 → RAGAS faithfulness 정의와 일치
 
@@ -148,7 +146,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 
 ## 주의사항 — 성능/설정
 - **설정 일원화**: `SIBLING_WINDOW`, `CRAG_SCORE_THRESHOLD`, `CRAG_MAX_RETRIES`, `SEARCH_PREFETCH_MULTIPLIER` → `config/settings.py`. 하드코딩 금지.
-- **CrossEncoder 1회**: 비교 질문은 `search_rrf_only` 로 수집, 리랭킹 1회만 (`search_comparison`).
+- **CrossEncoder 1회**: 검색 후 리랭킹 1회만 (`search_and_rerank`).
 - **Sibling 배치**: `_fetch_siblings_batch()`로 OR 필터 1회 조회. N+1 금지.
 - **Qdrant upsert**: 1000개 단위. 32MB HTTP 제한의 ~19%.
 - **OCR 병렬**: `ThreadPoolExecutor(4)`로 paddle HTTP 병렬화.
@@ -170,5 +168,5 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 ## 세부 가이드
 - @docs/api.md          : REST API 설계 (엔드포인트, 스키마, 에러 코드, 멱등성)
 - @docs/architecture.md : 시스템 구성도, 데이터 흐름, 성능 수치, 장애 대응
-- @docs/pipeline.md     : RAG 서빙 (쿼리 라우팅, Query Decomposition, CRAG, 프롬프트, Self-RAG)
+- @docs/pipeline.md     : RAG 서빙 (쿼리 라우팅, CRAG, 프롬프트, Self-RAG)
 - @docs/chunking.md     : 청킹 전략 (adaptive/fixed, OCR 파이프라인 3단계 필터, sibling 복원)

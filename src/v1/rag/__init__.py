@@ -7,14 +7,14 @@ heavy 모듈(clients·search·sibling·tokens)은 import만 해도 CrossEncoder/
 import만으로도 실행 가능 (host 에 모델 파일 없어도 안전).
 """
 
-from .classifier import classify_query, decompose_comparison, RouteResult, SearchStrategy, QueryType
+from .classifier import classify_query, RouteResult, SearchStrategy, QueryType
 from .grader import evaluate_retrieval, verify_answer, classify_failure, build_hint, FailureType
-from .prompts import PROMPTS, REWRITE_PROMPT, DECOMPOSE_PROMPT, REGENERATE_WITH_HINT_PROMPT
+from .prompts import PROMPTS, REWRITE_PROMPT, REGENERATE_WITH_HINT_PROMPT
 from .trace import TraceRecord, trace_record, trace_span, get_trace, write_trace
 
 __all__ = [
-    "classify_query", "decompose_comparison", "RouteResult", "SearchStrategy", "QueryType",
+    "classify_query", "RouteResult", "SearchStrategy", "QueryType",
     "evaluate_retrieval", "verify_answer", "classify_failure", "build_hint", "FailureType",
-    "PROMPTS", "REWRITE_PROMPT", "DECOMPOSE_PROMPT", "REGENERATE_WITH_HINT_PROMPT",
+    "PROMPTS", "REWRITE_PROMPT", "REGENERATE_WITH_HINT_PROMPT",
     "TraceRecord", "trace_record", "trace_span", "get_trace", "write_trace",
 ]

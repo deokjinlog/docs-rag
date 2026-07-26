@@ -70,28 +70,6 @@ PROMPTS = {
     ]),
 }
 
-# 비교 질의 분해 (Query Decomposition).
-# 규칙(router.py _PAIR_PATTERN)이 먼저 시도되고, 매칭 실패 시 LLM이 판단.
-# 규칙 우선인 이유: latency ~0ms vs LLM ~2초, 정형화된 패턴은 규칙이 정확.
-DECOMPOSE_PROMPT = ChatPromptTemplate.from_messages([
-    ("system",
-     "이 질문을 하나의 검색 쿼리로 처리할지, 여러 개의 검색 쿼리로 분해할지 판단하라.\n"
-     "- 분해가 필요 없으면: SINGLE\n"
-     "- 분해가 필요하면: MULTI: [쿼리1, 쿼리2, ...]\n"
-     "다른 말은 쓰지 말고 위 형식만 출력하라.\n\n"
-     "예시:\n"
-     "질문: 1종과 2종의 차이가 뭔가요?\n"
-     "MULTI: [1종 보장내용, 2종 보장내용]\n\n"
-     "질문: 기본 플랜과 프리미엄 플랜의 차이는?\n"
-     "MULTI: [기본 플랜 혜택, 프리미엄 플랜 혜택]\n\n"
-     "질문: A 방식과 B 방식을 비교해줘\n"
-     "MULTI: [A 방식 특징, B 방식 특징]\n\n"
-     "질문: 청구 절차가 어떻게 되나요?\n"
-     "SINGLE\n\n"
-     "질문: 제43조가 적용되는 경우는?\n"
-     "SINGLE"),
-    ("human", "{query}"),
-])
 
 # 재작성 시 구조적 참조(제N조, 별표N, Section 등)를 임의로 추가하면
 # 라우팅이 STRUCTURED_LOOKUP으로 바뀌어 BM25 위주 검색이 되고,

@@ -17,8 +17,6 @@ POST /answer    →  [1] 쿼리 라우팅 → [2] CRAG 루프 → [3] 프롬프�
 |---|---|---|
 | [1-A] 쿼리 유형 분류 (5-type) | 정규식 | ❌ 0ms |
 | [1-B] Dense/BM25 배수 선택 | 분류 결과 기반 dict lookup | ❌ |
-| [1-C] COMPARISON 분해 (1차) | 정규식 `_PAIR_PATTERN` | ❌ 0ms |
-| [1-C] COMPARISON 분해 (2차 fallback) | vLLM (Qwen3) | ✓ ~2s |
 | Dense 검색 | BGE-M3 + Qdrant ANN | 임베딩 GPU |
 | BM25 검색 | Qdrant sparse | ❌ |
 | RRF 융합 | Qdrant 내부 | ❌ |
@@ -31,7 +29,7 @@ POST /answer    →  [1] 쿼리 라우팅 → [2] CRAG 루프 → [3] 프롬프�
 | [4'] Critic failure type 분류 | 정규식 + 집합 비교 + (선택) NLI/LLM judge | ❌ (judge 미주입 시) |
 | [4'] Hint-guided regenerate (조건부) | vLLM, generation_error/unit_error에만 1회 | ✓ ~3s (조건부) |
 
-**LLM이 호출되는 지점은 4곳** — 분해 fallback · CRAG 재작성 · 답변 생성 · Critic regenerate(조건부). **분류·선택·검증은 전부 결정론적** (정규식 or dict lookup or 숫자 비교). 그래서 **라우팅·프롬프트 선택·검증·failure type 분류는 매 요청 0ms**로 끝난다.
+**LLM이 호출되는 지점은 3곳** — CRAG 재작성 · 답변 생성 · Critic regenerate(조건부). **분류·선택·검증은 전부 결정론적** (정규식 or dict lookup or 숫자 비교). 그래서 **라우팅·프롬프트 선택·검증·failure type 분류는 매 요청 0ms**로 끝난다.
 
 ## [1] 쿼리 라우팅 (Rule 기반)
 
@@ -71,66 +69,23 @@ Prefetch(query=bm25_text,  using="content-bm25", limit=top_k * bm25_factor)
 
 **검색 방식을 바꾸는 게 아니라 후보 풀의 구성을 바꾸는 방식**. Cormack et al. *RRF* (SIGIR 2009)의 원리 — 어느 쪽 리스트에서 더 많은 후보가 들어오면 fusion 결과도 그쪽 비중이 커짐.
 
-### 1-C. COMPARISON Query Decomposition — 비교 쿼리 분해
+### 1-C. COMPARISON — wide-retrieve + 비교 프롬프트 (분해 없음)
 
-`COMPARISON` 유형만 추가 단계. 단일 검색으로 "1종과 2종의 차이"를 벡터 검색하면 두 대상을 동시에 표현하려 해서 어느 쪽도 제대로 못 잡음. **서브쿼리 2개로 쪼개서 각각 검색 → 합산 → 원 쿼리로 리랭킹**.
+`COMPARISON`은 별도 분해 단계 없이 **하이브리드 검색(DENSE_HEAVY)으로 넓게** 두 대상의 근거를 함께 모으고, **비교 프롬프트**로 LLM이 문맥에서 표로 비교한다. (1-A 분류 → 1-B factor → 표준 `search_and_rerank`.)
 
-```
-"1종과 2종의 차이가 뭔가요?"
-  ↓ 분해 (아래 3단계)
-  ["1종 차이", "2종 차이"] 서브쿼리 2개
-  ↓ 각각 Dense 8× / BM25 3× prefetch + RRF
-  chunks_from_1종 ∪ chunks_from_2종 (중복 제거)
-  ↓ 원 쿼리 "1종과 2종의 차이가 뭔가요?"로 CrossEncoder 1회 리랭킹
-  최종 top_k
-```
-
-**3단계 분해 전략** (fallback chain):
-
-1. **규칙 기반** (1차, latency ~0ms) — `_PAIR_PATTERN` 정규식, 2전략
-   - 같은 접미어 공유: `형·종·안·판·급·타입·모드·방식·유형·단계·레벨·버전·수준` 13종 중 하나가 양쪽에 붙는 경우 (예: "1종과 2종", "기본형과 고급형", "초급과 중급")
-   - 명시적 구분자: `vs` / `versus` / `대` (예: "Python vs Java", "A 대 B")
-   - 도메인별 접미어 확장이 필요하면 `src/v1/rag/classifier.py`의 `_PAIR_SUFFIXES` 튜플에 추가 (예: 보험 도메인 "용·플랜·병원·일당")
-2. **LLM 기반** (2차, fallback, +~2s) — `DECOMPOSE_PROMPT`로 LLM이 MULTI/SINGLE 판단
-   ```
-   질문: 자가용과 영업용 운전자의 보장 범위 차이는?
-   MULTI: [자가용운전자 보장 범위, 영업용운전자 보장 범위]
-   ```
-3. **둘 다 실패** → 단일 검색 폴백 + trace에 `method=llm_failed` 기록
-
-**first-wins 원칙**: 초기 호출에서만 `rec.decomposition`을 기록. CRAG 재시도의 rewritten query가 원본 결과를 덮어쓰지 않도록.
-
-### 세 단계가 맞물리는 전체 흐름
-
-```
-"1종과 2종의 차이가 뭔가요?" 입력
-  ↓ (1-A) regex classifier
-  query_type = COMPARISON
-  ↓ (1-B) factor 결정
-  dense=8, bm25=3 (DENSE_HEAVY)
-  ↓ (1-C) decomposition
-  ["1종 차이", "2종 차이"] 서브쿼리
-  ↓ 서브쿼리마다 Dense 8× / BM25 3× prefetch + RRF
-  ↓ 합산 후 원 쿼리로 리랭킹
-  최종 top_k chunks → [2] CRAG 루프로
-```
+> **왜 분해를 뺐나 (SOTA + 실측)** — 비교 질의에서 분해가 돕는 건 LLM의 추론력이 아니라 *coverage*(두 대상 근거를 다 검색했나)인데, "1종 vs 2종"은 보통 근거가 같은 약관에 나란히 있어 wide-retrieve로 충분하다. 예전 규칙 분해(`_PAIR_PATTERN`)는 서브쿼리를 문자열 수술로 만들다 "1종 가 뭔가요" 같은 깨진 쿼리를 생성해 comparison 4건 중 **2건 refusal**을 냈다([회고 §1](design-retrospective.md)). 2024–2026 컨센서스도 닫힌 코퍼스에선 분해 대신 wide-retrieve가 기본(ARAGOG "advanced ≠ better"). coverage gap이 *측정되면* entity-aware 병렬검색을 조건부 도입.
 
 ### 구현 위치
 
 | 책임 | 파일 : 함수/상수 |
 |---|---|
 | 5-type 분류 (regex) + factor 결정 | [src/v1/rag/classifier.py](../src/v1/rag/classifier.py): `classify_query()`, `RouteResult`, `QueryType`, `SearchStrategy`, `_STRUCTURED_REF_PATTERN` / `_PROCEDURE_PATTERN` / `_COMPARISON_PATTERN` / `_INTERPRETATION_PATTERN` (BASE + DOMAIN extension 구조) |
-| COMPARISON 분해 (1차 regex) | [src/v1/rag/classifier.py](../src/v1/rag/classifier.py): `decompose_comparison()`, `_PAIR_PATTERN` |
-| COMPARISON 분해 (2차 LLM fallback) | [src/v1/rag/search.py](../src/v1/rag/search.py): `decompose_query_llm()` + [src/v1/rag/prompts.py](../src/v1/rag/prompts.py): `DECOMPOSE_PROMPT` |
-| 서브쿼리 오케스트레이션 (first-wins 포함) | [src/v1/rag/search.py](../src/v1/rag/search.py): `search_comparison()` |
 | 하이브리드 검색 (Dense + BM25 + RRF) | [src/v1/rag/search.py](../src/v1/rag/search.py): `search_rrf_only()` |
 | 리랭킹 포함 검색 | [src/v1/rag/search.py](../src/v1/rag/search.py): `search_and_rerank()` |
 | prefetch 배수 상수 | [src/v1/config/settings.py](../src/v1/config/settings.py): `SEARCH_PREFETCH_MULTIPLIER` |
 
 **관측 메모**:
 - 쿼리 유형 분포(INTERPRETATION / SIMPLE_FACT / COMPARISON 등)는 평가셋 vs 운영 데이터 간 차이가 클 수 있으므로 `trace_summary.py` Section 1으로 주기 확인
-- Decomposition rule hit rate 낮은 도메인은 `_PAIR_PATTERN` 커버리지 밖 — 패턴 확장 또는 LLM 분해 단일화 검토 지점
-- 서브쿼리 post-processing(조사·종결어미 제거) 미흡 시 약한 서브쿼리 → 초기 검색 실패 → CRAG 재시도 도미노 가능
 
 ## [2] CRAG 루프 (검색 품질 평가 → 재검색)
 
@@ -150,7 +105,6 @@ CrossEncoder 리랭킹 후 **상위 문서의 rerank score**로 검색 품질을
 - **재작성**: vLLM에 "검색에 더 적합한 형태로 재작성하라" 프롬프트
 - **재작성 쿼리도 라우팅 재수행**: 원래 쿼리는 STRUCTURED_LOOKUP이었는데 재작성 후 INTERPRETATION이 될 수 있음
 - **최대 재시도**: `CRAG_MAX_RETRIES = 2`
-- **COMPARISON 유지**: 재작성 후에도 COMPARISON이면 Query Decomposition 재적용
 
 ### 구현 위치
 
@@ -162,9 +116,8 @@ CrossEncoder 리랭킹 후 **상위 문서의 rerank score**로 검색 품질을
 | threshold / 최대 재시도 상수 | [src/v1/config/settings.py](../src/v1/config/settings.py): `CRAG_SCORE_THRESHOLD`, `CRAG_MAX_RETRIES` |
 
 **알려진 한계**:
-- 최악 케이스에서 LLM 호출 5~6회(분해 1 + 재작성 2 + 답변 1), latency 10초+
+- 최악 케이스에서 LLM 호출 3~4회(재작성 2 + 답변 1 + Critic 조건부), latency 8초+
 - CRAG on/off A/B 비교 데이터 미확보. 관측 지표: `crag_retry_rate`, `crag_on_off_ab_test`
-- Query Decomposition 규칙 매칭률 미측정. 관측 지표: `qd_rule_hit_rate`, `qd_llm_hit_rate`, `qd_single_rate`
 
 ## [3] 프롬프트 분기
 
