@@ -214,6 +214,21 @@ def demo_cross():
             print(f"  [{pid:<16}] {top[0].score:.2f} {pl['ref_id'].split('_', 2)[-1]:<7} {pl['title'][:26]}")
 
 
+def demo_sub():
+    """복합문서 특약 분해 검증 — 담보별 질의가 37개 특약 중 올바른 특약을 찾는가.
+    무필터라도 상품명(특약명)이 임베딩에 들어가 해당 특약 조가 상위로."""
+    qc = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"],
+                      grpc_port=QDRANT_CONFIG["grpc_port"], prefer_grpc=True)
+    for q in ["크라운치료 보험금은 어떻게 지급되나요?",
+              "치석제거(스케일링) 보장되나요?",
+              "허혈성심장질환 입원일당 지급사유는?"]:
+        print(f"\nQ: {q}")
+        for p in _search(qc, q, None)[:3]:
+            pl = p.payload
+            print(f"   {p.score:.2f} [{pl['product_id']:<20}] {pl.get('product_name', '')[:22]:<22} "
+                  f"{pl['ref_id'].split('_')[-1]} {pl['title'][:16]}")
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "--demo":
@@ -222,5 +237,7 @@ if __name__ == "__main__":
         demo_drm()
     elif mode == "--cross":
         demo_cross()
+    elif mode == "--sub":
+        demo_sub()
     else:
         index(sys.argv[1:])
