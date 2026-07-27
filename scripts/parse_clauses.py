@@ -31,8 +31,19 @@ RE_EXTERNAL = re.compile(
     r'(의료법시행규칙|동법시행규칙|의료법|동법|상법|민법|보험업법|근로기준법|약관의?\s*규제[^\s]*)'
     r'\s*제\s*\d+\s*조'
 )
-# 별표 헤딩: "## (별표3) 질병 및 재해분류표"
-RE_ANNEX = re.compile(r'^#{1,4}\s*[（(]?\s*별표\s*(\d+)\s*[)）]?\s*(.*)$', re.MULTILINE)
+# 별표 섹션 헤더: 라인시작 "(별표N)" — 불릿(- (별표1)) / 헤딩(## (별표3)) 양쪽.
+# 괄호 필수 → 인라인 "별표4(재해분류표)" 참조는 줄 중간이라 배제. ToC 점선 항목은
+# find_annexes에서 RE_TOC_DOTS로 스킵. (ODL이 별표1·2는 불릿, 3·4는 헤딩으로 뽑음)
+RE_ANNEX = re.compile(r'^[#\-•*\s]*[（(]\s*별표\s*(\d+)\s*[)）]\s*(.*)$', re.MULTILINE)
+
+
+def _annex_kind(title: str) -> str:
+    """별표 종류: 분류표(행 단위 어휘검색) / 적립이율(공식) / 지급기준표(통째 컨텍스트)."""
+    if "분류표" in title:
+        return "classification"
+    if "이율" in title or "계산" in title:
+        return "formula"
+    return "payout"                       # 지급기준표 등 (기본)
 
 _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 
@@ -90,9 +101,34 @@ def extract_refs(text: str, self_jo: int, product_id: str) -> list[dict]:
     return refs
 
 
+def _dedup_title(t: str) -> str:
+    """ODL이 헤딩 제목을 중복 반복함('재해분류표 재해분류표') → 절반 반복 제거."""
+    t = re.sub(r'\s+', ' ', t).strip()
+    half = len(t) // 2
+    if len(t) % 2 == 1 and t[half] == ' ' and t[:half] == t[half + 1:]:
+        return t[:half]
+    return t
+
+
 def find_annexes(md: str, product_id: str) -> list[dict]:
-    return [{"annex_id": f"{product_id}_별표{m.group(1)}", "no": int(m.group(1)),
-             "title": m.group(2).strip()} for m in RE_ANNEX.finditer(md)]
+    """별표 섹션 탐지 → 경계·본문·종류. 라인시작 (별표N) 마커만(인라인 참조 배제),
+    ToC 점선 항목 스킵. 각 섹션 본문은 다음 별표 전까지. fetch 경로용(검색 아님)."""
+    marks = []
+    for m in RE_ANNEX.finditer(md):
+        line_end = md.find("\n", m.end())
+        rest = md[m.end(): line_end if line_end != -1 else len(md)]
+        if RE_TOC_DOTS.search(m.group(0)) or RE_TOC_DOTS.search(rest):
+            continue                          # 목차 점선 항목 제외
+        marks.append((m.start(), int(m.group(1)), _dedup_title(m.group(2))))
+
+    out = []
+    for i, (start, no, title) in enumerate(marks):
+        end = marks[i + 1][0] if i + 1 < len(marks) else len(md)
+        out.append({
+            "annex_id": f"{product_id}_별표{no}", "no": no, "title": title,
+            "kind": _annex_kind(title), "raw_markdown": md[start:end].strip(),
+        })
+    return out
 
 
 def main():
