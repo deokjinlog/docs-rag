@@ -31,8 +31,9 @@ def _body(v):
     return f"$clause${v}$clause$" if v else "NULL"
 
 
-def build_sql(md: str, product_id: str) -> str:
-    clauses = pc.parse_clauses(md, product_id)
+def build_sql(md: str, product_id: str, region: tuple | None = None,
+              annex_pid: str | None = None) -> str:
+    clauses = pc.parse_clauses(md, product_id, region=region)
     ids = {c["clause_id"] for c in clauses}
     lines = []
 
@@ -49,7 +50,7 @@ def build_sql(md: str, product_id: str) -> str:
         )
 
     for c in clauses:
-        for r in pc.extract_refs(c["text"], c["jo"], product_id):
+        for r in pc.extract_refs(c["text"], c["jo"], product_id, annex_pid=annex_pid):
             if r["type"] == "조항":
                 resolved = r["target"] in ids            # 내부 조 → 존재
             elif r["type"] == "별표":

@@ -37,6 +37,10 @@ RE_EXTERNAL = re.compile(
 # 제1절 보통약관 + 제2절 특별약관(수십 개, 각자 제1조부터 재시작)인 복합 문서라, 이 경계로
 # 보통약관만 먼저 잘라 파싱한다(특별약관은 각각 미니상품 → 후속).
 RE_SECTION = re.compile(r'^#{1,6}\s*제\s*(\d+)\s*절', re.MULTILINE)
+# 개별 특약 헤딩: 헤딩 레벨 3+ 이면서 줄이 '특별약관'으로 끝남 (예: #### 1-1. 크라운치료
+# 특별약관, ### 2-2. …특별약관). 카테고리(## N. …관련 특별약관)·절(# 제2절 특별약관)은
+# 레벨 1~2라 제외. 본문 중 '…이 특별약관에 정하지…' 같은 줄은 '특별약관'으로 안 끝나 제외.
+RE_SUBPRODUCT = re.compile(r'^#{3,6}\s*(.+?특별약관)\s*$', re.MULTILINE)
 # 별표 섹션 헤더: 라인시작 "(별표N)"(라이나 반각) 또는 "【별표N】"(New치아·다이렉트 전각).
 # 불릿(- (별표1)) / 헤딩(## (별표3)) 양쪽. 괄호 필수 → 인라인 "별표4(재해분류표)" 참조는
 # 줄 중간이라 배제. ToC 점선 항목은 find_annexes에서 RE_TOC_DOTS로 스킵.
@@ -59,28 +63,66 @@ def select_profile(md: str) -> str:
     return "full" if len(RE_JO.findall(md)) >= 3 else "half"
 
 
-def parse_clauses(md: str, product_id: str) -> list[dict]:
+def _sections(md_masked: str) -> list:
+    """본문 절(節) 헤딩 (목차 점선 항목 제외)."""
+    out = []
+    for m in RE_SECTION.finditer(md_masked):
+        le = md_masked.find("\n", m.start())
+        if not RE_TOC_DOTS.search(md_masked[m.start(): le if le != -1 else len(md_masked)]):
+            out.append(m)
+    return out
+
+
+def split_sections(md: str) -> list[dict]:
+    """복합문서(제1절 보통약관 + 제2절~ 특별약관 수십개)를 서브약관으로 분해.
+    각 특약은 준용규정으로 보통약관을 따르는 미니상품 → parent가 보통약관. 단일문서면
+    [{'name':'', 'parent':False, region:(0,부록)}] 하나만 반환(=parse_clauses 기본과 동일)."""
+    md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
+    sections = _sections(md_masked)
+    app = RE_APPENDIX_START.search(md_masked)
+    doc_end = app.start() if app else len(md)
+
+    if len(sections) < 2:                          # 단일 약관
+        return [{"name": "", "parent": False, "region": (0, doc_end)}]
+
+    bounds = [("보통약관", sections[0].end(), False)]
+    for m in RE_SUBPRODUCT.finditer(md_masked):
+        if m.start() > sections[0].end():          # 제1절(보통약관) 뒤의 개별 특약만
+            name = re.sub(r'^\d+[-.]?\d*\.?\s*', '', m.group(1)).strip()   # 앞 번호(1-1.) 제거
+            bounds.append((name, m.start(), True))
+    bounds.sort(key=lambda b: b[1])
+
+    out = []
+    for i, (name, start, is_sub) in enumerate(bounds):
+        end = bounds[i + 1][1] if i + 1 < len(bounds) else doc_end
+        if start < doc_end:
+            out.append({"name": name, "parent": is_sub, "region": (start, min(end, doc_end))})
+    return out
+
+
+def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list[dict]:
     """조 경계로 분할 → 조 단위 clause 리스트. 외부법령 마스킹(위치보존) 후 탐지,
-    본문은 원본에서. 목차/부록/인용법령 전문은 프로파일별로 배제, 번호 단조증가로 본문 한정."""
+    본문은 원본에서. 목차/부록/인용법령 전문은 프로파일별로 배제, 번호 단조증가로 본문 한정.
+    region=(start,end) 주면 그 구간만 단일 약관으로 파싱(복합문서 서브약관용, split_sections)."""
     profile = select_profile(md)
     regex = RE_JO if profile == "full" else RE_JO_HALF
 
     # 의료법 제N조 등 외부법령을 같은 길이 filler로 치환 → 위치 보존, 조 오탐 방지
     md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
 
-    # 복합 문서(제1절 보통약관 + 제2절~ 특별약관)면 보통약관 구간만 파싱. 그러면 목차(제1절
-    # 앞)와 특별약관(제2절 뒤)이 구간 밖이라 자동 배제 → ToC 필터 없이 라인시작+단조증가로 충분.
-    sections = []                                       # 목차의 "제2절 ····" 항목은 제외
-    for m in RE_SECTION.finditer(md_masked):
-        le = md_masked.find("\n", m.start())
-        if not RE_TOC_DOTS.search(md_masked[m.start(): le if le != -1 else len(md_masked)]):
-            sections.append(m)
-    compound = len(sections) >= 2
-    if compound:
-        body_start, body_end = sections[0].end(), sections[1].start()
+    if region is not None:                              # 지정 구간(서브약관): 목차 없음, 구간 자체가 경계
+        compound = True
+        body_start, body_end = region
     else:
-        app = RE_APPENDIX_START.search(md_masked)
-        body_start, body_end = 0, (app.start() if app else len(md))
+        # 복합 문서(제1절 보통약관 + 제2절~ 특별약관)면 보통약관 구간만 파싱. 그러면 목차(제1절
+        # 앞)와 특별약관(제2절 뒤)이 구간 밖이라 자동 배제 → ToC 필터 없이 라인시작+단조증가로 충분.
+        sections = _sections(md_masked)
+        compound = len(sections) >= 2
+        if compound:
+            body_start, body_end = sections[0].end(), sections[1].start()
+        else:
+            app = RE_APPENDIX_START.search(md_masked)
+            body_start, body_end = 0, (app.start() if app else len(md))
 
     jos, last = [], 0
     for m in regex.finditer(md_masked):
@@ -114,8 +156,11 @@ def parse_clauses(md: str, product_id: str) -> list[dict]:
     return out
 
 
-def extract_refs(text: str, self_jo: int, product_id: str) -> list[dict]:
-    """조 본문에서 참조 추출. 외부 법령 먼저 마스킹 → 내부 조항/항/별표만 남김."""
+def extract_refs(text: str, self_jo: int, product_id: str,
+                 annex_pid: str | None = None) -> list[dict]:
+    """조 본문에서 참조 추출. 외부 법령 먼저 마스킹 → 내부 조항/항/별표만 남김.
+    annex_pid: 별표는 문서(부모) 소유라, 특약 서브약관에선 부모 product_id로 타깃(기본=자기)."""
+    annex_pid = annex_pid or product_id
     masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), text)
     refs = []
     seen = set()
@@ -131,7 +176,7 @@ def extract_refs(text: str, self_jo: int, product_id: str) -> list[dict]:
         key = ("별표", m.group(1))
         if key not in seen:
             seen.add(key)
-            refs.append({"type": "별표", "target": f"{product_id}_별표{m.group(1)}"})
+            refs.append({"type": "별표", "target": f"{annex_pid}_별표{m.group(1)}"})
     return refs
 
 

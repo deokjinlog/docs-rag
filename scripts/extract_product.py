@@ -28,16 +28,21 @@ COMPANY_MAP = {
 }
 
 
-def extract_product(md: str, product_id: str, source_doc: str) -> dict:
-    clauses = pc.parse_clauses(md, product_id)
+def extract_product(md: str, product_id: str, source_doc: str,
+                    region: tuple | None = None, parent_id: str | None = None,
+                    name: str | None = None, annex_pid: str | None = None) -> dict:
+    """region 주면 그 구간만 파싱(복합문서 특약 서브약관). parent_id/name 주면 특약으로
+    처리(상품명·별표참조는 인자·부모 소유). annex_pid: 별표 참조 소유자(특약이면 부모)."""
+    clauses = pc.parse_clauses(md, product_id, region=region)
+    is_sub = parent_id is not None
 
-    # 상품명: 제목 헤딩 (특약/보험 포함, 목차·안내 제외). 헤딩 깊이는 회사마다 다름(#####까지)
-    name = None
-    for m in re.finditer(r'^#{1,6}\s*(.+?(?:특약|보험)[^\n#]*)$', md, re.MULTILINE):
-        t = m.group(1).strip()
-        if not any(x in t for x in ("목차", "안내", "요약", "유의사항", "해설")):
-            name = t
-            break
+    # 상품명: 특약이면 인자로 받음, 아니면 제목 헤딩 (특약/보험 포함, 목차·안내 제외)
+    if name is None:
+        for m in re.finditer(r'^#{1,6}\s*(.+?(?:특약|보험)[^\n#]*)$', md, re.MULTILINE):
+            t = m.group(1).strip()
+            if not any(x in t for x in ("목차", "안내", "요약", "유의사항", "해설")):
+                name = t
+                break
 
     # 회사 (긴 약칭 먼저 매칭)
     company = None
@@ -46,7 +51,7 @@ def extract_product(md: str, product_id: str, source_doc: str) -> dict:
             company = COMPANY_MAP[k]
             break
 
-    contract_type = "특약" if (name and "특약" in name) else "주계약"
+    contract_type = "특약" if (is_sub or (name and "특약" in name)) else "주계약"
     is_renewable = "갱신형" in md or "특약의 갱신" in md
 
     # 담보명·지급조건·별표참조: '지급사유' 조에서 (조 번호는 회사마다 다름 — 라이나 제5조,
@@ -60,15 +65,18 @@ def extract_product(md: str, product_id: str, source_doc: str) -> dict:
             cov_name = m.group(1).strip()
         ma = re.search(r'별표\s*(\d+)', b)
         if ma:
-            payout_ref = f"{product_id}_별표{ma.group(1)}"
+            payout_ref = f"{annex_pid or product_id}_별표{ma.group(1)}"  # 특약이면 별표는 부모 소유
         mc = re.search(r'회사는\s*(.+?)(?:때에는|경우에는)', b)
         if mc:
             payout_cond = re.sub(r'\s+', ' ', mc.group(1).strip())[:150]
 
-    # 준용 → resolution_note (없는 필드가 '주계약 소관'임을 명시)
+    # 준용 → resolution_note (없는 필드가 '주계약/보통약관 소관'임을 명시)
     resolution = None
     junyong = [c for c in clauses if "준용" in c["title"]]
-    if junyong:
+    if is_sub:
+        resolution = (f"이 특약은 준용규정으로 보통약관({parent_id})을 따름 — 미기재 필드"
+                      f"(청약철회·면책기간 등)는 보통약관 소관.")
+    elif junyong:
         jo_label = junyong[0]["clause_id"].split("_")[-1]
         resolution = (f"청약철회·대기기간 등 미기재 필드는 주계약 준용({jo_label}) 소관. "
                       f"주계약 문서 미확보 → 해당 질의는 '답변 불가'가 정답.")
@@ -79,7 +87,7 @@ def extract_product(md: str, product_id: str, source_doc: str) -> dict:
         "coverage_name": cov_name, "payout_condition": payout_cond,
         "payout_table_ref": payout_ref,
         "waiting_period_days": None, "cooling_off_days": None,
-        "parent_policy_id": None, "resolution_note": resolution,
+        "parent_policy_id": parent_id, "resolution_note": resolution,
         "source_doc": source_doc,
     }
 

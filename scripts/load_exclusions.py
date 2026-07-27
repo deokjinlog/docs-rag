@@ -31,10 +31,11 @@ def _q(v):
     return "NULL" if v is None else "'" + str(v).replace("'", "''") + "'"
 
 
-def build_sql(md: str, product_id: str) -> str:
-    clauses = pc.parse_clauses(md, product_id)
+def build_sql(md: str, product_id: str, region: tuple | None = None) -> str:
+    clauses = pc.parse_clauses(md, product_id, region=region)
     cov_clause = next((c for c in clauses if "지급사유" in c["title"]), None)
-    cov_id = cov_clause["clause_id"] if cov_clause else "NULL"
+    cov_id = cov_clause["clause_id"] if cov_clause else None   # None → _q가 SQL NULL 생성
+    # ('NULL' 문자열이면 coverage_clause FK 위반 — 지급사유 없는 제도성 특약에서 발생)
 
     lines = [f"DELETE FROM coverage_exclusion_map WHERE product_id={_q(product_id)};"]
     cov_expr = f"(SELECT coverage_name FROM product WHERE product_id={_q(product_id)})"
