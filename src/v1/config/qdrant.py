@@ -22,6 +22,11 @@ QDRANT_CONFIG = {
     "hnsw_ef": 128,
 }
 
+# 보험 약관 전용 컬렉션 (관계형 SQL 계층과 분리된 RAG 해석 계층). 컬렉션명에 임베딩
+# 모델·차원을 박아둔다 — 나중에 모델을 바꾸면(bge-m3→e5 등) 벡터 공간이 달라 구 컬렉션과
+# 섞으면 안 되는데, 이름이 곧 스키마라 실수로 섞는 걸 막는다. 이 상수 한 곳에서만 참조.
+INSURANCE_COLLECTION = "insurance_bge_m3_1024"
+
 LLM_CONFIG = {
     "base_url": os.environ["LLM_BASE_URL"],
     "model": os.environ["LLM_MODEL"],

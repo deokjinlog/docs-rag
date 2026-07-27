@@ -115,6 +115,7 @@ services:
       - ./data:/app/data
       - ./model:/app/model
       - ./tests:/app/tests   # docker exec uv run pytest용 — host 변경 즉시 반영 (conftest.py 포함)
+      - ./scripts:/app/scripts   # docker exec uv run python scripts/… 용 (색인·평가; BGE-M3가 컨테이너에만 있음)
     # 임베더·리랭커는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일, GPU는 vLLM 전용)
     depends_on:
       - postgres

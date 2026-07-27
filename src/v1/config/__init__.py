@@ -16,7 +16,8 @@ from .settings import (
     StatusCode,
 )
 from .database import SessionLocal, get_db, task_session, engine, Base
-from .qdrant import QDRANT_CONFIG, LLM_CONFIG, BM25_CONFIG, RERANKER_CONFIG, EMBEDDING_CONFIG
+from .qdrant import (QDRANT_CONFIG, INSURANCE_COLLECTION, LLM_CONFIG, BM25_CONFIG,
+                     RERANKER_CONFIG, EMBEDDING_CONFIG)
 
 __all__ = [
     "PROJECT_ROOT", "DATA_DIR", "MODEL_DIR",
@@ -30,5 +31,6 @@ __all__ = [
     "OCR_MIN_TEXT_LENGTH",
     "StatusCode",
     "SessionLocal", "get_db", "task_session", "engine", "Base",
-    "QDRANT_CONFIG", "LLM_CONFIG", "BM25_CONFIG", "RERANKER_CONFIG", "EMBEDDING_CONFIG",
+    "QDRANT_CONFIG", "INSURANCE_COLLECTION", "LLM_CONFIG", "BM25_CONFIG",
+    "RERANKER_CONFIG", "EMBEDDING_CONFIG",
 ]
