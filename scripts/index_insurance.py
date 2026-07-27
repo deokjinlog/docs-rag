@@ -200,11 +200,27 @@ def demo_drm():
     _show("LINA_INCOME_2024", "product_id=LINA_INCOME_2024 필터 → 소득보장 특약만")
 
 
+def demo_cross():
+    """4개 상품(라이나 전각 · New치아/다이렉트 반각) 교차 검색 — 같은 질문을 상품별 필터로.
+    포맷·회사가 달라도 한 컬렉션에서 product_id로 격리되고, 각 상품 면책 조가 top에 뜨는지."""
+    qc = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"],
+                      grpc_port=QDRANT_CONFIG["grpc_port"], prefer_grpc=True)
+    q = "보험금을 지급하지 않는 경우는?"
+    print(f"Q: {q}")
+    for pid in ("LINA_ICU_2024", "LINA_INCOME_2024", "NEWTOOTH_2024", "DIRECT_INPT_2024"):
+        top = _search(qc, q, pid)[:1]
+        if top:
+            pl = top[0].payload
+            print(f"  [{pid:<16}] {top[0].score:.2f} {pl['ref_id'].split('_', 2)[-1]:<7} {pl['title'][:26]}")
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "--demo":
         demo()
     elif mode == "--drm":
         demo_drm()
+    elif mode == "--cross":
+        demo_cross()
     else:
         index(sys.argv[1:])

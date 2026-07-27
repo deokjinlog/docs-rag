@@ -37,10 +37,10 @@ RE_EXTERNAL = re.compile(
 # 제1절 보통약관 + 제2절 특별약관(수십 개, 각자 제1조부터 재시작)인 복합 문서라, 이 경계로
 # 보통약관만 먼저 잘라 파싱한다(특별약관은 각각 미니상품 → 후속).
 RE_SECTION = re.compile(r'^#{1,6}\s*제\s*(\d+)\s*절', re.MULTILINE)
-# 별표 섹션 헤더: 라인시작 "(별표N)" — 불릿(- (별표1)) / 헤딩(## (별표3)) 양쪽.
-# 괄호 필수 → 인라인 "별표4(재해분류표)" 참조는 줄 중간이라 배제. ToC 점선 항목은
-# find_annexes에서 RE_TOC_DOTS로 스킵. (ODL이 별표1·2는 불릿, 3·4는 헤딩으로 뽑음)
-RE_ANNEX = re.compile(r'^[#\-•*\s]*[（(]\s*별표\s*(\d+)\s*[)）]\s*(.*)$', re.MULTILINE)
+# 별표 섹션 헤더: 라인시작 "(별표N)"(라이나 반각) 또는 "【별표N】"(New치아·다이렉트 전각).
+# 불릿(- (별표1)) / 헤딩(## (별표3)) 양쪽. 괄호 필수 → 인라인 "별표4(재해분류표)" 참조는
+# 줄 중간이라 배제. ToC 점선 항목은 find_annexes에서 RE_TOC_DOTS로 스킵.
+RE_ANNEX = re.compile(r'^[#\-•*\s]*[（(【]\s*별표\s*(\d+)\s*[)）】]\s*(.*)$', re.MULTILINE)
 
 
 def _annex_kind(title: str) -> str:

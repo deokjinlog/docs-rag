@@ -24,16 +24,16 @@ COMPANY_MAP = {
     "삼성생명": "삼성생명", "한화생명": "한화생명", "교보생명": "교보생명",
     "KB손해보험": "KB손해보험", "KB손보": "KB손해보험", "KB": "KB손해보험",
     "현대해상": "현대해상", "DB손해보험": "DB손해보험", "메리츠": "메리츠화재",
+    "AXA손해보험": "AXA손해보험", "삼성화재": "삼성화재", "흥국화재": "흥국화재",
 }
 
 
 def extract_product(md: str, product_id: str, source_doc: str) -> dict:
     clauses = pc.parse_clauses(md, product_id)
-    by_jo = {c["jo"]: c for c in clauses}
 
-    # 상품명: 제목 헤딩 (특약/보험 포함, 목차·안내 제외)
+    # 상품명: 제목 헤딩 (특약/보험 포함, 목차·안내 제외). 헤딩 깊이는 회사마다 다름(#####까지)
     name = None
-    for m in re.finditer(r'^#{1,4}\s*(.+?(?:특약|보험)[^\n#]*)$', md, re.MULTILINE):
+    for m in re.finditer(r'^#{1,6}\s*(.+?(?:특약|보험)[^\n#]*)$', md, re.MULTILINE):
         t = m.group(1).strip()
         if not any(x in t for x in ("목차", "안내", "요약", "유의사항", "해설")):
             name = t
@@ -49,9 +49,10 @@ def extract_product(md: str, product_id: str, source_doc: str) -> dict:
     contract_type = "특약" if (name and "특약" in name) else "주계약"
     is_renewable = "갱신형" in md or "특약의 갱신" in md
 
-    # 담보명·지급조건·별표참조: 제5조(보험금의 지급사유)에서
+    # 담보명·지급조건·별표참조: '지급사유' 조에서 (조 번호는 회사마다 다름 — 라이나 제5조,
+    # New치아·다이렉트 보통약관 제3조 → 번호 하드코딩 대신 제목으로 탐지)
     cov_name = payout_cond = payout_ref = None
-    c5 = by_jo.get(5)
+    c5 = next((c for c in clauses if "지급사유" in c["title"]), None)
     if c5:
         b = c5["text"]
         m = re.search(r'보험수익자에게\s*([^(（]+?)\s*[(（]\s*별표', b)
