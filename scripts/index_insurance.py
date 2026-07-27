@@ -11,8 +11,11 @@ point id는 clause_id/annex_id에서 uuid5로 결정론 생성 → 재색인 멱
   docker compose exec api uv run python scripts/index_insurance.py [product_id ...]
   (인자 없으면 product 테이블 전체)
 """
+import os
 import sys
 import uuid
+import json
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -27,10 +30,25 @@ from qdrant_client.models import (
 )
 
 from src.v1.config import QDRANT_CONFIG, INSURANCE_COLLECTION, BM25_CONFIG, task_session
-from src.v1.utils import embed_texts
 
 _NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")   # 고정 네임스페이스 (결정론 id)
 _SPARSE = BM25_CONFIG["sparse_vector_name"]
+# 임베딩은 이미 떠 있는 api 서버(/embeddings)에 위임한다. 8GB에서 스크립트가 BGE-M3를
+# 별도로 또 로드하면 서버 사본과 겹쳐 OOM(SIGKILL) — 서버의 로드된 모델을 재사용.
+_EMBED_URL = os.environ.get("EMBED_URL", "http://localhost:8002/api/v1/docs-rag/embeddings")
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """api /embeddings 위임(작은 배치). 스크립트 내 2차 모델 로드 회피 + 8GB 박스라
+    한 번에 많이 인코딩하면 서버 BGE-M3가 OOM → 배치 8로 피크 메모리 억제."""
+    out = []
+    for i in range(0, len(texts), 8):
+        req = urllib.request.Request(
+            _EMBED_URL, data=json.dumps({"texts": texts[i:i + 8]}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as r:
+            out.extend(json.load(r)["vectors"])
+    return out
 
 
 def _pid(ref_id: str) -> str:
@@ -59,8 +77,8 @@ def ensure_collection(qc: QdrantClient) -> None:
 
 def _load(product_ids: list[str]) -> list[dict]:
     """clause(조 본문) + annex(별표 요약) 레코드를 색인 단위로 로드."""
-    where = "WHERE p.product_id IN :ids" if product_ids else ""
-    params = {"ids": tuple(product_ids)} if product_ids else {}
+    where = "WHERE p.product_id = ANY(:ids)" if product_ids else ""  # 리스트 → PG 배열
+    params = {"ids": list(product_ids)} if product_ids else {}
     items = []
     with task_session() as db:
         clauses = db.execute(text(
@@ -70,7 +88,9 @@ def _load(product_ids: list[str]) -> list[dict]:
                 ORDER BY c.product_id, c.jo"""), params).mappings().all()
         for c in clauses:
             # 임베딩 텍스트: 상품명(제품 간 구분) + 조 본문. payload 필터와 이중 안전.
-            embed = f"{c['product_name']}\n{c['body']}"
+            # BGE-M3 sweet spot(~512토큰) + 8GB 메모리 감안해 1600자로 컷(초과분은
+            # 검색 근거로 덜 중요한 조 후반부 — 본문 전체는 clause.body/SQL에 보존).
+            embed = f"{c['product_name']}\n{c['body']}"[:1600]
             items.append({
                 "point_id": _pid(c["clause_id"]), "kind": "clause",
                 "embed": embed, "text": c["body"],
@@ -161,8 +181,30 @@ def demo():
             print(f"   {p.score:.3f} [{pl['kind']:<6}] {pl['ref_id'].split('_', 2)[-1]:<8} · {pl['title'][:34]}")
 
 
+def demo_drm():
+    """DRM: 필터 없으면 라이나 특약들의 near-identical 제8조가 섞인다(어느 상품 것?).
+    product_id 필터가 이를 격리 — 관계형 payload가 벡터검색을 결정론적으로 만든다."""
+    qc = QdrantClient(host=QDRANT_CONFIG["host"], port=QDRANT_CONFIG["port"],
+                      grpc_port=QDRANT_CONFIG["grpc_port"], prefer_grpc=True)
+    q = "보험금은 어떻게 청구하나요?"
+
+    def _show(pid, tag):
+        print(f"\n── {tag} ──")
+        for p in _search(qc, q, pid)[:4]:
+            pl = p.payload
+            print(f"   {p.score:.3f} [{pl['product_id']:<16}] {pl['ref_id'].split('_', 2)[-1]:<7} {pl['title'][:22]}")
+
+    print(f"Q: {q}")
+    _show(None, "필터 없음 → 제품 간 오염(DRM): 어느 상품 제8조인지 섞임")
+    _show("LINA_ICU_2024", "product_id=LINA_ICU_2024 필터 → 중환자실 특약만")
+    _show("LINA_INCOME_2024", "product_id=LINA_INCOME_2024 필터 → 소득보장 특약만")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--demo":
+    mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    if mode == "--demo":
         demo()
+    elif mode == "--drm":
+        demo_drm()
     else:
         index(sys.argv[1:])
