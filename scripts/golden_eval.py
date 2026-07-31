@@ -42,12 +42,27 @@ def predict(doc: str, section: str, field: str):
     return p.get(field)
 
 
+import unicodedata
+
+
+def _norm(s):
+    """채점 전 정규화 — 사소한 표기차(공백·구두점·유니코드) 흡수. LIKE(포함) 아님·생짜== 아님.
+    담보명 '중환자실 입원급여금' == '중환자실입원급여금' 은 통과, 다른 값은 안 통과."""
+    if s is None:
+        return None
+    s = unicodedata.normalize("NFKC", str(s))
+    s = re.sub(r"\s+", "", s)                 # 공백 제거
+    s = re.sub(r"[,.·“”\"'()\[\]]", "", s)     # 사소한 구두점 제거
+    return s.lower()
+
+
 def _judge(gold, pred):
-    """결정론 채점 — LLM 아님. 값 대조로 TP/FN/FP/TN."""
-    if gold and pred == gold:      return "TP", "✅ TP"
-    if gold and pred is None:      return "FN", "❌ FN(놓침)"
-    if gold and pred != gold:      return "FP", "❌ FP(틀림)"
-    if gold is None and pred is None: return "TN", "✅ TN(맞게비움)"
+    """결정론 채점 — LLM 아님. 정규화 후 값 대조로 TP/FN/FP/TN."""
+    g, p = _norm(gold), _norm(pred)
+    if g is not None and p == g:        return "TP", "✅ TP"
+    if g is not None and p is None:     return "FN", "❌ FN(놓침)"
+    if g is not None and p != g:        return "FP", "❌ FP(틀림)"
+    if g is None and p is None:         return "TN", "✅ TN(맞게비움)"
     return "FP", "❌ FP(헛짚음)"
 
 
