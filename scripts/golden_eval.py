@@ -23,7 +23,7 @@ def _mod(n):
 
 pc = _mod("parse_clauses")
 ep = _mod("extract_product")
-GOLDEN = _HERE.parent / "data" / "eval" / "golden_covname.jsonl"
+GOLDEN = _HERE.parent / "data" / "eval" / "golden.jsonl"
 
 
 def predict(doc: str, section: str, field: str):
@@ -42,32 +42,40 @@ def predict(doc: str, section: str, field: str):
     return p.get(field)
 
 
+def _judge(gold, pred):
+    """결정론 채점 — LLM 아님. 값 대조로 TP/FN/FP/TN."""
+    if gold and pred == gold:      return "TP", "✅ TP"
+    if gold and pred is None:      return "FN", "❌ FN(놓침)"
+    if gold and pred != gold:      return "FP", "❌ FP(틀림)"
+    if gold is None and pred is None: return "TN", "✅ TN(맞게비움)"
+    return "FP", "❌ FP(헛짚음)"
+
+
 def main():
     rows = [json.loads(l) for l in open(GOLDEN, encoding="utf-8") if l.strip()]
-    tp = fp = fn = tn = 0
-    print(f"{'문서/구간':<34}{'정답':<18}{'추출':<18}판정")
-    print("-" * 78)
+    from collections import Counter
+    per_field = {}                                     # field → Counter(TP/FN/FP/TN)
+    print(f"{'문서/구간':<22}{'필드':<20}{'정답':<16}{'추출':<16}판정")
+    print("-" * 86)
     for r in rows:
-        gold = r["expected"]
         pred = predict(r["doc"], r["section"], r["field"])
-        if gold and pred == gold:
-            tp += 1; v = "✅ TP"
-        elif gold and pred is None:
-            fn += 1; v = "❌ FN(놓침)"
-        elif gold and pred != gold:
-            fp += 1; v = f"❌ FP(틀림)"
-        elif gold is None and pred is None:
-            tn += 1; v = "✅ TN(맞게비움)"
-        else:
-            fp += 1; v = "❌ FP(헛짚음)"
-        label = f"{r['doc'][:12]}/{r['section'] or '(전체)'}"
-        print(f"{label:<34}{str(gold):<18}{str(pred):<18}{v}")
+        cat, v = _judge(r["expected"], pred)
+        per_field.setdefault(r["field"], Counter())[cat] += 1
+        label = f"{r['doc'][:8]}/{r['section'] or '전체'}"
+        print(f"{label:<22}{r['field']:<20}{str(r['expected']):<16}{str(pred):<16}{v}")
 
-    rec = tp / (tp + fn) if (tp + fn) else 1.0
-    prec = tp / (tp + fp) if (tp + fp) else 1.0
-    print("-" * 78)
-    print(f"TP={tp} FN={fn} FP={fp} TN={tn}  →  recall={rec:.2f}  precision={prec:.2f}")
-    print(f"(recall = 정답 있는 것 중 맞게 뽑은 비율 = {tp}/{tp+fn})")
+    print("-" * 86)
+    print("필드별 precision/recall (결정론 채점):")
+    T = Counter()
+    for f, c in per_field.items():
+        T += c
+        rec = c["TP"] / (c["TP"] + c["FN"]) if (c["TP"] + c["FN"]) else 1.0
+        prec = c["TP"] / (c["TP"] + c["FP"]) if (c["TP"] + c["FP"]) else 1.0
+        print(f"  {f:<22} recall={rec:.2f}  precision={prec:.2f}  "
+              f"(TP{c['TP']} FN{c['FN']} FP{c['FP']} TN{c['TN']})")
+    rec = T["TP"] / (T["TP"] + T["FN"]) if (T["TP"] + T["FN"]) else 1.0
+    prec = T["TP"] / (T["TP"] + T["FP"]) if (T["TP"] + T["FP"]) else 1.0
+    print(f"  {'─ 전체':<22} recall={rec:.2f}  precision={prec:.2f}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,7 @@
+{"doc":"라이나_중환자실입원특약","section":"","field":"coverage_name","expected":"중환자실 입원급여금","evidence":"제5조 지급사유 본문","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","section":"","field":"contract_type","expected":"특약","evidence":"상품명에 '특약'","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","section":"","field":"waiting_period_days","expected":null,"evidence":"주계약 준용·미확보→확인불가가 정답","labeler":"최덕진"}
+{"doc":"New치아보험_약관","section":"크라운치료 특별","field":"coverage_name","expected":"크라운치료","evidence":"특약명=담보(지급사유는 표참조형)","labeler":"최덕진"}
+{"doc":"New치아보험_약관","section":"크라운치료 특별","field":"contract_type","expected":"특약","evidence":"제2절 특약 하위","labeler":"최덕진"}
+{"doc":"New치아보험_약관","section":"","field":"coverage_name","expected":null,"evidence":"보통약관은 담보 여럿→단일 담보명 없음","labeler":"최덕진"}
+{"doc":"New치아보험_약관","section":"","field":"contract_type","expected":"주계약","evidence":"제1절 보통약관","labeler":"최덕진"}
