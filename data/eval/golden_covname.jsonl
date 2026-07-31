@@ -1,0 +1,4 @@
+{"doc": "라이나_중환자실입원특약", "section": "", "field": "coverage_name", "expected": "중환자실 입원급여금"}
+{"doc": "New치아보험_약관", "section": "크라운치료 특별", "field": "coverage_name", "expected": "크라운치료"}
+{"doc": "New치아보험_약관", "section": "영구치보철치료 특별", "field": "coverage_name", "expected": "영구치보철치료"}
+{"doc": "New치아보험_약관", "section": "", "field": "coverage_name", "expected": null}
