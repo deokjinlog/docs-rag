@@ -167,6 +167,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 
 ## 세부 가이드
 - @docs/domain-model.md : 보험 약관 도메인 토대 (표준약관 백본·주계약↔특약 준용·관-조-항-호 계층·별표·구현 매핑)
+- @docs/eval-and-golden.md : 평가·골든셋 방법론 (precision-first·실패분석 루프·필드별 채점·전처리 게이트·로드맵)
 - @docs/api.md          : REST API 설계 (엔드포인트, 스키마, 에러 코드, 멱등성)
 - @docs/architecture.md : 시스템 구성도, 데이터 흐름, 성능 수치, 장애 대응
 - @docs/pipeline.md     : RAG 서빙 (쿼리 라우팅, CRAG, 프롬프트, Self-RAG)
