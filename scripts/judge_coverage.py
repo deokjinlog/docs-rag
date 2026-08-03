@@ -84,15 +84,16 @@ def judge(doc: str, code: str, coverage: str) -> dict:
     my = ranges.get(coverage, [])
     hit = next((t for t in my if _contains(code, t)), None)
     if hit:
-        return {"verdict": "보장", "evidence": f"{coverage} 범위 {hit} 포함"}
-    # 다른 담보 범위에 들면 '미보장(해당 담보 아님)' — 담보 특정성
+        return {"verdict": "보장", "redirect_coverage": None, "evidence": f"{coverage} 범위 {hit} 포함"}
+    # 다른 담보 범위에 들면 '미보장(해당 담보 아님)' + 실제 담보로 리다이렉트 — 담보 특정성
     for cov, toks in ranges.items():
         if cov == coverage:
             continue
         other = next((t for t in toks if _contains(code, t)), None)
         if other:
-            return {"verdict": "미보장", "evidence": f"{code}는 {cov} 범위({other}) — {coverage} 아님"}
-    return {"verdict": "판정불가", "evidence": f"{code} 어느 범위에도 없음 → RAG/전문가"}
+            return {"verdict": "미보장", "redirect_coverage": cov,
+                    "evidence": f"{code}는 {cov} 범위({other}) — {coverage} 아님"}
+    return {"verdict": "판정불가", "redirect_coverage": None, "evidence": f"{code} 어느 범위에도 없음 → RAG/전문가"}
 
 
 def main():

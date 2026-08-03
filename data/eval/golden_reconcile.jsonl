@@ -1,0 +1,4 @@
+{"question":"암진단자금 D05면 얼마 받고 보장되나?","expected_verdict":"미보장","expected_redirect":"제자리암진단자금"}
+{"question":"암진단자금 C50이면 얼마?","expected_verdict":"보장","expected_redirect":null}
+{"question":"암진단자금 C16 위암이면 얼마?","expected_verdict":"보장","expected_redirect":null}
+{"question":"암진단자금 Z99면 얼마?","expected_verdict":"판정불가","expected_redirect":null}

@@ -55,6 +55,26 @@ def _exclusions(doc: str) -> list:
     return [c["title"] for c in clauses if any(k in c["title"] for k in EXCL_KW)][:3]
 
 
+def _redirect_rate(doc: str, cov_kw: str, it: dict) -> str:
+    """리다이렉트 담보(예: 제자리암진단자금)의 지급률 — 경과기간 반영."""
+    rows = [r for r in qp._all_rows() if cov_kw[:4] in (r.get("coverage") or "")]
+    for r in rows:
+        if it.get("period_bucket") and r.get("period_bucket") == it["period_bucket"]:
+            return f"{r['rate_pct']}%"
+    return f"{rows[0]['rate_pct']}%(경과기간별)" if rows else "별표 참조"
+
+
+def _reconcile(doc: str, code: str, cov_name: str, v: dict, it: dict, payout_row) -> str:
+    """사실 화해 — 보장판정이 payout을 게이팅. 미보장이면 실제 담보로 리다이렉트(제외 우선)."""
+    if v["verdict"] == "보장":
+        rate = payout_row.get("rate_pct") if payout_row else "?"
+        return f"{code}는 {cov_name} 보장 → 지급 {rate}%"
+    if v["verdict"] == "미보장" and v.get("redirect_coverage"):
+        rc = v["redirect_coverage"]
+        return f"{code}는 {cov_name} 대상 아님(미보장) → 실제 '{rc}' 담보로 {_redirect_rate(doc, rc, it)}"
+    return f"{code} 판정불가 → 코드 확인/전문가"
+
+
 def assemble_answer(q: str) -> dict:
     """질문 → 엣지 순회 조립 → {elements, tags}. 완결성은 골든이 required로 채점."""
     it = qp._intent(q)
@@ -86,19 +106,45 @@ def assemble_answer(q: str) -> dict:
         rng = jc.coverage_ranges(doc)                    # ① 보장범위 (별표3 ICD 판정 홉)
         cov_name = next((c for c in rng if it.get("coverage") and it["coverage"] in c), None)
         if cov_name:
-            code = re.search(r'[CD]\d{2}(?:\.\d)?', q)   # 질문에 코드 있으면 특정 판정
+            code = re.search(r'[A-Z]\d{2}(?:\.\d)?', q)  # 질문에 코드 있으면 특정 판정(C/D 외 Z 등도)
             if code:
                 v = jc.judge(doc, code.group(), cov_name)
                 el["coverage_scope"] = f"{code.group()} → {v['verdict']} ({v['evidence']})"
+                tags.add("coverage_scope")
+                el["final"] = _reconcile(doc, code.group(), cov_name, v, it, row)   # 사실 화해
+                el["reconcile"] = {"verdict": v["verdict"], "redirect": v.get("redirect_coverage")}
+                tags.add("reconciled")
             else:
                 el["coverage_scope"] = f"보장범위는 별표3 코드 기준({cov_name}) — 코드 입력 시 보장/미보장/판정불가"
-            tags.add("coverage_scope")
+                tags.add("coverage_scope")
 
     return {"question": q, "doc": doc, "elements": el, "tags": tags}
 
 
 # ── 완결성 골든 채점 ────────────────────────────────────────────────
+def _score_reconcile():
+    """사실 화해 채점 — 보장판정 verdict + 리다이렉트 담보가 맞나."""
+    g = os.path.join(HERE, "..", "data", "eval", "golden_reconcile.jsonl")
+    rows = [json.loads(l) for l in open(g, encoding="utf-8") if l.strip()]
+    ok = 0
+    print(f"{'질문':<30}{'기대판정':<10}{'판정':<10}{'리다이렉트':<16}판정")
+    print("-" * 78)
+    for r in rows:
+        a = assemble_answer(r["question"])
+        rc = a["elements"].get("reconcile", {})
+        hit = (rc.get("verdict") == r["expected_verdict"]
+               and (rc.get("redirect") or None) == (r.get("expected_redirect") or None))
+        ok += hit
+        print(f"{r['question'][:28]:<30}{r['expected_verdict']:<10}"
+              f"{str(rc.get('verdict')):<10}{str(rc.get('redirect') or '-'):<16}{'✅' if hit else '❌'}")
+    print("-" * 78)
+    print(f"정확도 {ok}/{len(rows)}  → 보장판정이 payout을 게이팅/리다이렉트(제외 우선)")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--reconcile":
+        _score_reconcile()
+        return
     if len(sys.argv) > 1:                                 # 단건 조립 데모
         a = assemble_answer(sys.argv[1])
         print(f"질문: {a['question']}  (문서: {a['doc']})")
