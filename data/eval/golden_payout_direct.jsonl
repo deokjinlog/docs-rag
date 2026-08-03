@@ -1,0 +1,5 @@
+{"doc":"다이렉트늘안심입원비보험_약관","coverage":"암진단자금","age":"15세이상","period_bucket":"90일이하","field":"rate_pct","expected":0,"evidence":"암진단비 표: 암진단자금 15세이상 90일이하 0%","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","coverage":"암진단자금","age":"15세이상","period_bucket":"90일초과1년미만","field":"rate_pct","expected":50,"evidence":"암진단비 표: 암진단자금 15세이상 90일초과1년미만 50%","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","coverage":"암진단자금","age":"15세미만","period_bucket":"90일이하","field":"rate_pct","expected":50,"evidence":"암진단비 표: 암진단자금 15세미만 90일이하 50%","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","coverage":"제자리암진단자금","age":null,"period_bucket":"90일이하","field":"rate_pct","expected":10,"evidence":"암진단비 표: 병합셀 분리 제자리암진단자금 90일이하 10%","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","coverage":"갑상선암진단자금","age":null,"period_bucket":"1년이상","field":"rate_pct","expected":20,"evidence":"암진단비 표: 병합셀 분리 갑상선암진단자금 1년이상 20%","labeler":"최덕진"}
