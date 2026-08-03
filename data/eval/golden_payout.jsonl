@@ -9,3 +9,7 @@
 {"doc":"New치아보험_약관","coverage":"레진","cause":"질병","period_bucket":"90일초과1년미만","field":"rate_pct","expected":25,"evidence":"제3조 질병원인 표: 레진 90일초과1년미만 25%(감액)","labeler":"최덕진"}
 {"doc":"New치아보험_약관","coverage":"레진","cause":"질병","period_bucket":"1년이상","field":"rate_pct","expected":50,"evidence":"제3조 질병원인 표: 레진 1년이상 50%(만기율)","labeler":"최덕진"}
 {"doc":"New치아보험_약관","coverage":"금(도재) 인레이","cause":"질병","period_bucket":"1년이상","field":"rate_pct","expected":100,"evidence":"제3조 질병원인 표: 금인레이 1년이상 100%","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","coverage":"12개월 소득보장 수술급여금","field":"rate_pct","expected":30,"evidence":"지급기준표: 매월 보험가입금액의 30%(12개월간 확정지급)","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","coverage":"12개월 소득보장 수술급여금","field":"per_unit","expected":"매월","evidence":"지급기준표: 매월 보험가입금액의 30%","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","coverage":"12개월 소득보장 수술급여금","field":"reduction_rate_pct","expected":50,"evidence":"지급기준표: 1년 이내 재해 제외 발생시 상기 금액의 50%","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","coverage":"12개월 소득보장 수술급여금","field":"reduction_cause","expected":"재해외","evidence":"지급기준표: 재해는 제외(=재해외 원인만 감액)","labeler":"최덕진"}

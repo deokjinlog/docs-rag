@@ -17,43 +17,25 @@ import unicodedata
 _HERE = pathlib.Path(__file__).parent
 GOLDEN = _HERE.parent / "data" / "eval" / "golden_payout.jsonl"
 
-# 별표1 지급기준표 heading. 목차(ToC) 라인은 뒤에 점선(......)이 붙어 제외.
-RE_PAYOUT_HEAD = re.compile(r'지급기준표')
-RE_TOC = re.compile(r'[.·]{5,}')            # 목차 점선
-RE_NEXT_ANNEX = re.compile(r'^[#\-\s]*[（(【]?\s*별표\s*[2-9]')
-RE_NEXT_JO = re.compile(r'^[#\-\s]*제\s*\d+\s*조')
+def _threecol_rows(md: str):
+    """정확히 3열(급부명|지급사유|지급금액)이고 지급금액 칸에 '가입금액'이 있는 표 행.
 
-
-def _payout_region(md: str) -> str:
-    """별표1 지급기준표 '영역'만 잘라낸다(목차·요약행 과탐 배제)."""
-    lines = md.split("\n")
-    start = None
-    for i, ln in enumerate(lines):                       # 실제 표 heading = 마지막(목차 아님)
-        if RE_PAYOUT_HEAD.search(ln) and not RE_TOC.search(ln):
-            start = i
-    if start is None:
-        return ""
-    region = []
-    for ln in lines[start + 1:]:                          # 다음 별표/조 전까지
-        if RE_NEXT_ANNEX.match(ln) or RE_NEXT_JO.match(ln):
-            break
-        region.append(ln)
-    return "\n".join(region)
-
-
-def _rows(region: str):
-    """마크다운 표에서 데이터 행만(헤더·구분선·요약(2열) 제외, 3열 이상)."""
-    for ln in region.split("\n"):
+    heading 앵커 대신 '내용 기반' — 문서마다 '지급기준표' 제목 위치가 달라 앵커(마지막 heading)가
+    표를 놓치던 문제(라이나_소득보장 0행) 회피. New치아·다이렉트의 5열 경과기간 매트릭스는
+    프로파일 B가 담당하므로 '정확히 3열' 한정이 두 프로파일을 자연 분리한다."""
+    for ln in md.split("\n"):
         s = ln.strip()
         if not s.startswith("|"):
             continue
         cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 3:                                # 지급기준표는 급부명|지급사유|지급금액 (3열↑)
+        if len(cells) != 3:                              # 3열만 (매트릭스 5열은 B 담당)
             continue
-        c0 = cells[0]
-        if not c0 or "---" in c0 or c0[0].isdigit():
+        c0, c2 = cells[0], cells[2]
+        if not c0 or "---" in c0 or c0.replace(" ", "").isdigit():   # 담보명은 '12개월…'처럼 숫자로 시작 가능 → 전체가 숫자일 때만 스킵
             continue
-        if any(k in c0 for k in ("급부명", "구분", "담보명")):   # 헤더행
+        if any(k in c0 for k in ("급부명", "구분", "담보명", "대상")):   # 헤더행
+            continue
+        if "가입금액" not in c2:                          # 지급금액 칸에 가입금액 = payout 표
             continue
         yield cells
 
@@ -70,19 +52,20 @@ def _parse_row(cells: list) -> dict:
     r["rate_pct"] = (int(m.group(1)) if m and "." not in m.group(1)
                      else float(m.group(1)) if m else None)
 
-    pu = re.search(r'(1일당|1회당|일당|회당)', amount)                  # 지급 단위
+    pu = re.search(r'(1일당|1회당|매월|매년|일당|회당)', amount)        # 지급 단위(일/회/월)
     r["per_unit"] = pu.group(1) if pu else None
 
     lm = re.search(r'([0-9]+)\s*일\s*한도', both)                       # 한도(일수)
     r["limit_days"] = int(lm.group(1)) if lm else None
 
-    red = re.search(r'상기금액의?\s*([0-9]+)\s*%', amount)              # 감액 지급률
+    red = re.search(r'상기\s*금액의?\s*([0-9]+)\s*%', amount)           # 감액 지급률
     r["reduction_rate_pct"] = int(red.group(1)) if red else None
 
     per = re.search(r'([0-9]+)\s*년이?\s*지난.*전일\s*이전', amount)     # "1년이 지난 전일 이전" = 1년이내
     r["reduction_period"] = f"{per.group(1)}년이내" if per else None
 
-    r["reduction_cause"] = "재해외" if re.search(r'재해\s*이?\s*외', amount) else None
+    # "재해 이외" / "재해는 제외" / "재해 제외" 모두 = 재해외 원인만 감액 대상
+    r["reduction_cause"] = "재해외" if re.search(r'재해\s*(?:이\s*외|는?\s*제외|를\s*제외)', amount) else None
     return r
 
 
@@ -146,8 +129,8 @@ def extract_payout(doc: str) -> list:
         import glob
         path = next(p for p in glob.glob("data/output/raw/*.md") if doc in p)
         md = open(path, encoding="utf-8").read()
-        rules = [_parse_row(c) for c in _rows(_payout_region(md))]      # 프로파일 A (라이나)
-        rules += _matrix_rules(md)                                     # 프로파일 B (New치아)
+        rules = [_parse_row(c) for c in _threecol_rows(md)]            # 프로파일 A (3열 지급기준표)
+        rules += _matrix_rules(md)                                     # 프로파일 B (경과기간 매트릭스)
         _CACHE[doc] = rules
     return _CACHE[doc]
 
