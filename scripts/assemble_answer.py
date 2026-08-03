@@ -91,11 +91,17 @@ def assemble_answer(q: str) -> dict:
             tags.add("limit")
 
     if doc:
-        ex = _exclusions(doc)                            # ④ 면책 강제첨부
+        tm = et.extract_terms(doc)                       # 준용/계약조건
+        is_rider = tm.get("cooling_off_days") is None    # 청약철회 미기재 = 준용 특약 신호
+
+        ex = _exclusions(doc)                            # ④ 면책 강제첨부(담보별 고유는 특약이 자체 보유)
         if ex:
             el["exclusion"] = ex
             tags.add("exclusion")
-        tm = et.extract_terms(doc)                       # 준용/계약조건
+            if is_rider:                                 # 진짜 준용 대상 = 보통약관 '공통' 면책(고의·전쟁 등)
+                el["exclusion_pending"] = "보통약관 공통면책(고의·자살·전쟁 등)은 준용 소관 — corpus 미확보 시 확인 필요"
+                tags.add("exclusion_common_pending")
+
         if tm.get("resolution_note"):
             el["resolution"] = tm["resolution_note"]
             tags.add("resolution")
