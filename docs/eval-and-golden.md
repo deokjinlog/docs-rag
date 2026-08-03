@@ -68,7 +68,10 @@
 - `scripts/golden_eval.py` — 골든 채점(필드별 precision/recall, `_norm` 정규화)
 - `data/eval/golden.jsonl` — SQL 추출 골든셋(담보명·계약유형·면책기간, evidence 포함)
 - `scripts/extract_payout.py` — 지급기준표 `payout_rule` 추출(프로파일 A 3열 + B 매트릭스) + 골든 채점
-- `data/eval/golden_payout.jsonl` — 소비자 QA "얼마/언제" 골든셋(지급률·단위·한도·감액·경과기간, 11건, 라이나·New치아, 11/11 순증 검증)
+- `data/eval/golden_payout.jsonl` — 소비자 QA "얼마/언제" 골든셋(지급률·단위·한도·감액·경과기간, 15건, 15/15 순증)
+- `scripts/extract_payout_llm.py` — 불규칙 표 LLM 폴백 사이드카(다이렉트 병합셀·연령축, 룰베 0.40 vs LLM 1.0 게이트)
+- `scripts/load_payout.py` · `scripts/query_payout.py` — payout_rule SQL 적재기(dry-run) + SQL경로 질의엔진(QA 5/5)
+- `scripts/extract_terms.py` — 계약조건 "언제까지"(청약철회·갱신·만기) 추출, 골든 `golden_terms.jsonl` 8/8(특약 준용 NULL=TN)
 
 **로드맵:**
 | # | 할 일 | 성격 |

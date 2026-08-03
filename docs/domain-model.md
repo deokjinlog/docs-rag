@@ -172,8 +172,8 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 2. **관/장 heading_path** — 답변에 "제2관 보험금의 지급 > 제7조" 맥락 경로 노출.
 3. **표준약관 prior 강화** — 실제 금감원 표준약관과 대조해 표준 조 목차를 사전으로 → 추출 규칙
    정밀화 + "표준 이탈 조" 탐지.
-4. **고정사실 컬럼 채우기** — 청약철회·면책 기간을 표준 위치 규칙으로 SQL 컬럼에 추출(현재 대부분
-   NULL + resolution_note).
+4. **고정사실 컬럼 채우기** — 청약철회·갱신·만기 "언제까지"를 조 본문에서 추출(`scripts/extract_terms.py`,
+   골든 `golden_terms.jsonl` 8/8). **특약은 준용이라 청약철회 NULL이 정답**(보통약관 소관, TN). 면책기간은 후속.
 5. **지급기준표 → `payout_rule` SQL 적재** — `extract_payout.py`가 뽑은 지급률·단위·한도·경과기간별
    감액을 실제 테이블로 적재해 3경로(SQL) 라우팅에 연결(현재 추출·골든 검증까지, DB 적재 미완).
    일반화 확장(다이렉트·소득보장) 중 진짜 불규칙 표를 만나면 LLM 폴백 실전 도입.

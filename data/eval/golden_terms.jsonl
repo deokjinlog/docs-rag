@@ -1,0 +1,8 @@
+{"doc":"New치아보험_약관","field":"cooling_off_days","expected":15,"evidence":"청약철회: 보험증권 받은 날부터 15일 이내(30일 한도)","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","field":"cooling_off_days","expected":15,"evidence":"청약철회: 받은 날부터 15일 이내(30일 한도)","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"cooling_off_days","expected":null,"evidence":"특약에 청약철회 없음 → 보통약관 준용 소관(NULL이 정답)","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","field":"cooling_off_days","expected":null,"evidence":"특약 준용 소관(NULL이 정답)","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"is_renewable","expected":true,"evidence":"(갱신형) + 10년마다 갱신","labeler":"최덕진"}
+{"doc":"New치아보험_약관","field":"is_renewable","expected":true,"evidence":"갱신형 계약","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"renewal_cycle_years","expected":10,"evidence":"보험기간 10년만기, 최초가입 후 10년마다 갱신","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"term_years","expected":10,"evidence":"보험기간은 10년만기","labeler":"최덕진"}
