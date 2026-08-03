@@ -16,6 +16,7 @@ LLM 호출: OpenAI 호환 endpoint(env LLM_BASE_URL/LLM_MODEL). 미가동 시 �
 """
 import os
 import re
+import sys
 import glob
 import json
 import unicodedata
@@ -77,9 +78,9 @@ def llm_extract(doc: str) -> list:
             txt = resp["choices"][0]["message"]["content"]
             return json.loads(re.search(r"\[.*\]", txt, re.S).group())
         except Exception as e:
-            print(f"[경고] LLM 호출 실패({e}) → 세션-판독 stub 사용")
+            print(f"[경고] LLM 호출 실패({e}) → 세션-판독 stub 사용", file=sys.stderr)
     else:
-        print("[안내] LLM_BASE_URL 미설정 → 세션-판독 stub 사용 (실 LLM은 env 설정 후)")
+        print("[안내] LLM_BASE_URL 미설정 → 세션-판독 stub 사용 (실 LLM은 env 설정 후)", file=sys.stderr)
     return _STUB
 
 
