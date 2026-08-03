@@ -1,0 +1,7 @@
+{"code":"C50","coverage":"암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"보장","evidence":"C50(유방암) ∈ 암 C50 범위"}
+{"code":"C16","coverage":"암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"보장","evidence":"C16(위암) ∈ C15~C26"}
+{"code":"D05","coverage":"암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"미보장","evidence":"D05(유방 제자리암) → 제자리암 담보, 일반암 아님"}
+{"code":"D05","coverage":"제자리암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"보장","evidence":"D05 ∈ 제자리암 D00~D09"}
+{"code":"D41","coverage":"경계성종양진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"보장","evidence":"D41 ∈ 경계성 D37~D48"}
+{"code":"D45","coverage":"암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"보장","evidence":"D45(진성적혈구증가증) ∈ 암 특정 D코드"}
+{"code":"Z99","coverage":"암진단자금","doc":"다이렉트늘안심입원비보험_약관","expected":"판정불가","evidence":"어느 범위에도 없음"}

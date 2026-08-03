@@ -31,6 +31,7 @@ def _load(name):
 qp = _load("query_payout")
 et = _load("extract_terms")
 pc = _load("parse_clauses")
+jc = _load("judge_coverage")
 GOLDEN = os.path.join(HERE, "..", "data", "eval", "golden_completeness.jsonl")
 
 # 담보 키워드 → 소속 문서
@@ -81,6 +82,17 @@ def assemble_answer(q: str) -> dict:
         if tm.get("cooling_off_days") is not None:
             el["cooling_off"] = f"청약철회 {tm['cooling_off_days']}일"
             tags.add("cooling_off")
+
+        rng = jc.coverage_ranges(doc)                    # ① 보장범위 (별표3 ICD 판정 홉)
+        cov_name = next((c for c in rng if it.get("coverage") and it["coverage"] in c), None)
+        if cov_name:
+            code = re.search(r'[CD]\d{2}(?:\.\d)?', q)   # 질문에 코드 있으면 특정 판정
+            if code:
+                v = jc.judge(doc, code.group(), cov_name)
+                el["coverage_scope"] = f"{code.group()} → {v['verdict']} ({v['evidence']})"
+            else:
+                el["coverage_scope"] = f"보장범위는 별표3 코드 기준({cov_name}) — 코드 입력 시 보장/미보장/판정불가"
+            tags.add("coverage_scope")
 
     return {"question": q, "doc": doc, "elements": el, "tags": tags}
 
