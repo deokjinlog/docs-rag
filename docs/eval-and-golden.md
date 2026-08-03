@@ -67,6 +67,8 @@
 - `scripts/validate_extraction.py` — precision 게이트 프로토(원문 대조)
 - `scripts/golden_eval.py` — 골든 채점(필드별 precision/recall, `_norm` 정규화)
 - `data/eval/golden.jsonl` — SQL 추출 골든셋(담보명·계약유형·면책기간, evidence 포함)
+- `scripts/extract_payout.py` — 지급기준표 `payout_rule` 추출(프로파일 A 3열 + B 매트릭스) + 골든 채점
+- `data/eval/golden_payout.jsonl` — 소비자 QA "얼마/언제" 골든셋(지급률·단위·한도·감액·경과기간, 11건, 라이나·New치아, 11/11 순증 검증)
 
 **로드맵:**
 | # | 할 일 | 성격 |

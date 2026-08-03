@@ -1,0 +1,11 @@
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"rate_pct","expected":1,"evidence":"별표1: 입원일수 1일당 특약보험가입금액의 1%","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"per_unit","expected":"1일당","evidence":"별표1: 입원일수 1일당","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"limit_days","expected":10,"evidence":"별표1 지급사유: 단, 1회입원당 10일 한도","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"reduction_rate_pct","expected":50,"evidence":"별표1: 재해 이외 원인·1년 이내 → 상기금액의 50% 지급","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"reduction_period","expected":"1년이내","evidence":"별표1: 보험계약일부터 1년이 지난 보험계약해당일 전일 이전","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","coverage":"중환자실 입원급여금","field":"reduction_cause","expected":"재해외","evidence":"별표1: 재해 이외의 원인으로 인한 치료","labeler":"최덕진"}
+{"doc":"New치아보험_약관","coverage":"레진","cause":"상해","period_bucket":null,"field":"rate_pct","expected":50,"evidence":"제3조 상해원인 표: 레진 충전치료 보험가입금액의 50%(정률)","labeler":"최덕진"}
+{"doc":"New치아보험_약관","coverage":"레진","cause":"질병","period_bucket":"90일이하","field":"rate_pct","expected":0,"evidence":"제3조 질병원인 표: 레진 90일 이하 0%(면책)","labeler":"최덕진"}
+{"doc":"New치아보험_약관","coverage":"레진","cause":"질병","period_bucket":"90일초과1년미만","field":"rate_pct","expected":25,"evidence":"제3조 질병원인 표: 레진 90일초과1년미만 25%(감액)","labeler":"최덕진"}
+{"doc":"New치아보험_약관","coverage":"레진","cause":"질병","period_bucket":"1년이상","field":"rate_pct","expected":50,"evidence":"제3조 질병원인 표: 레진 1년이상 50%(만기율)","labeler":"최덕진"}
+{"doc":"New치아보험_약관","coverage":"금(도재) 인레이","cause":"질병","period_bucket":"1년이상","field":"rate_pct","expected":100,"evidence":"제3조 질병원인 표: 금인레이 1년이상 100%","labeler":"최덕진"}
