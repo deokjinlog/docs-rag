@@ -61,6 +61,28 @@ CREATE TABLE IF NOT EXISTS annex_row (
     cols      JSONB                            -- 별표마다 컬럼이 달라 JSONB
 );
 
+-- ── 지급 규칙 (SQL 경로: "얼마 받아요? 언제부터 온전히?") ──
+-- 지급액은 (담보×원인×경과기간)의 함수라 스칼라 컬럼 불가 → 행 분해(annex_row 논리).
+-- 라이나식(텍스트 감액)·New치아식(경과기간 매트릭스) 두 인코딩을 한 테이블로 통합.
+-- source='llm' 행은 LLM 폴백 출처 — 정밀도 게이트(≥0.9) 통과분만 신뢰(precision-first 규율).
+CREATE TABLE IF NOT EXISTS payout_rule (
+    id             BIGSERIAL PRIMARY KEY,
+    product_id     TEXT REFERENCES product(product_id),
+    coverage       TEXT,                        -- 담보(급부명)
+    cause          TEXT,                        -- '질병' | '상해'/'재해' | '재해외' | NULL(전체)
+    age_band       TEXT,                        -- '15세미만' | '15세이상' | NULL
+    period_bucket  TEXT,                        -- '90일이하' | '90일초과1년미만' | '1년이상' | NULL(정률)
+    rate_pct       NUMERIC,                     -- 보험가입금액의 N%
+    per_unit       TEXT,                        -- '1일당' | '1회당' | '매월' | NULL
+    limit_days     INT,                         -- 한도(일/회)
+    reduction_rate_pct INT,                     -- 감액 지급률(라이나식 텍스트 감액)
+    reduction_period   TEXT,                    -- 감액 경과기간('1년이내')
+    reduction_cause    TEXT,                    -- 감액 대상 원인('재해외')
+    source         TEXT,                        -- 'rule' | 'llm' (추출 출처 — LLM은 게이트 통과분만)
+    evidence       TEXT                         -- 원문 근거
+);
+CREATE INDEX IF NOT EXISTS idx_payout_product ON payout_rule(product_id, coverage);
+
 -- ── 면책 매핑 (담보→면책조항; 보장/지급 질의 시 점수 무관 강제 첨부) ──
 CREATE TABLE IF NOT EXISTS coverage_exclusion_map (
     id             BIGSERIAL PRIMARY KEY,

@@ -40,9 +40,14 @@ def _threecol_rows(md: str):
         yield cells
 
 
+def _clean_cov(s: str) -> str:
+    """담보명 정리 — OCR 잔재(<br>) 제거 + 공백 정규화."""
+    return re.sub(r"\s+", " ", s.replace("<br>", " ")).strip()
+
+
 def _parse_row(cells: list) -> dict:
     """지급기준표 한 행 → payout_rule. 결정론(정규식). 못 뽑은 필드는 None."""
-    coverage = cells[0]
+    coverage = _clean_cov(cells[0])
     cond = cells[1]                                        # 지급사유(한도 포함)
     amount = cells[2].replace("<br>", " ")                # 지급금액(지급률+감액)
     both = cond + " " + amount
@@ -98,7 +103,7 @@ def _matrix_rules(md: str) -> list:
             j = i + 1
             while j < len(lines) and lines[j].strip().startswith("|"):   # 이어지는 데이터 행
                 dc = [c.strip() for c in lines[j].strip().strip("|").split("|")]
-                cov = dc[0]
+                cov = _clean_cov(dc[0])
                 if cov and "---" not in cov:
                     filled = []
                     for idx, bk in buckets.items():
