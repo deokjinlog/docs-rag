@@ -38,6 +38,7 @@ flowchart LR
 - **하이브리드 검색 + Rerank** — BGE-M3 Dense + Qdrant BM25를 RRF로 융합, CrossEncoder 리랭킹, sibling 복원.
 - **근거 확인** — 답변이 인용한 조항·숫자가 검색 근거에 있는지 정규식으로 대조(0ms). 없으면 플래그하되 답은 그대로 반환(자동 교정 없이 전문가 검토용).
 - **측정 기반 개선** — gold set으로 RAGAS·retrieval 지표를 재고, 병목(검색/생성)을 진단해 그 축만 고친다.
+- **결정론 SQL 경로 (약관 특화)** — "얼마·언제·보장범위"처럼 틀리면 안 되는 값은 RAG 대신 관계형 테이블에서 결정론으로 집어오고, 답을 조립할 때 **완결성 게이트**로 누락(면책 등)을 검출. 못 뽑으면 NULL→RAG(precision-first).
 - **정직한 설계 기록** — 라우팅·CRAG·Critic·풀 trace·가드레일은 만들어 두되 **기본은 꺼두고, 측정이 필요하다고 할 때만 켠다.**
 
 ## 빠른 시작
@@ -71,6 +72,35 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 | embed | BGE-M3 1024d → Qdrant (Dense + BM25). 상태코드로 실패 지점부터 재처리 |
 
 **서빙** — `POST /answer` : 라우팅 → 하이브리드 검색 → Rerank → LLM 생성 → 근거 확인 순. 근거 밖 참조는 답을 막지 않고 경고만 붙인다. CRAG·Critic는 기본 꺼짐. 상세: [pipeline.md](docs/pipeline.md).
+
+## 결정론 계층 — 약관 관계형 추출 (SQL 경로)
+
+RAG(확률적 해석)와 별개로, **값이 정해진 사실은 인덱싱 때 한 번 뽑아 관계형 테이블에 넣고 질의 때 SQL로 집어온다.** "얼마·언제·보장범위"처럼 틀리면 안 되는 질문에 확률적 검색 대신 결정론 답을 주는 3경로 설계. 방법론·골든셋은 [eval-and-golden.md](docs/eval-and-golden.md), 도메인 토대는 [domain-model.md](docs/domain-model.md).
+
+```mermaid
+flowchart LR
+    Q[소비자 질문] --> R{라우팅}
+    R -->|얼마·언제| SQL[("payout_rule<br/>SQL")]
+    R -->|해석·절차| RAG[("Qdrant<br/>RAG")]
+    R -->|별표| F[("annex<br/>fetch")]
+    SQL --> AS["조립 + 완결성 게이트"]
+    RAG --> AS
+    F --> AS
+    AS --> ANS[답변]
+```
+
+**소비자 5대 질문 → 결정론 필드** (약관→관계형 추출, `scripts/`)
+
+| 질문 | 소스 | 방식 |
+|---|---|---|
+| 얼마 받아요? | `payout_rule` (지급률·한도·감액) | 지급기준표 행분해 — 룰베 프로파일 + 불규칙 표는 LLM 폴백(사이드카) |
+| 언제부터/까지? | 감액·면책기간 · 청약철회·갱신·만기 | 조 본문 추출 — 특약은 준용이라 **NULL이 정답** |
+| 보장돼요? | `judge_coverage` (별표3 ICD) | 코드 범위 판정 — 담보특정성·제외우선·판정불가 |
+| 뭐가 면책? | `coverage_exclusion_map` | 담보→면책 **강제첨부**(점수 무관) |
+
+**답변 = 조회가 아니라 조립.** 특약·보통약관·별표에 흩어진 조각을 준용·강제첨부로 해소해 모으고, **완결성 게이트**가 필수 요소 누락을 검출한다(면책 빠뜨리면 소비자 손해). 보장판정이 지급률을 게이팅해 모순을 화해한다 — 예: *"D05는 암진단자금 미보장(제자리암) → 제자리암 담보 10%"*.
+
+> **정직성 두 축** — ①**precision-first**: 못 뽑으면 틀린 값 대신 NULL→RAG("확신에 찬 오답" 0). ②**게이트가 다음 할 일을 가리킨다**: 완결성 게이트가 "별표3 판정 갭"을 지목→그 홉을 만들어 채우고, "면책 준용 폴백" 가정은 데이터가 교정(담보 면책은 특약 고유). 골든 7종 46건·precision 1.00로 검증(오프라인 대역 — 실 DB/vLLM 배선은 남음).
 
 ## 평가 — 측정으로 자생하는 루프
 
@@ -118,6 +148,8 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer \
 | 문서 | 내용 |
 |---|---|
 | [architecture.md](docs/architecture.md) | 시스템 구성, 포트, 데이터 흐름, 장애 대응 |
+| [domain-model.md](docs/domain-model.md) | 약관 도메인 토대 (표준약관·주계약↔특약 준용·별표·payout_rule) |
+| [eval-and-golden.md](docs/eval-and-golden.md) | 평가·골든셋 방법론 (precision-first·완결성 게이트·ICD 판정) |
 | [pipeline.md](docs/pipeline.md) | 서빙 (라우팅, CRAG, 프롬프트, 근거 확인) |
 | [chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR, sibling 복원) |
 | [design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 판단기준·실측·개선 전략 |
