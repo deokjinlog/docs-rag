@@ -17,9 +17,9 @@ GOLDEN = os.path.join(HERE, "..", "data", "eval", "golden_terms.jsonl")
 
 
 def _md(doc: str) -> str:
-    silver = os.path.join(HERE, "..", "data/output/silver", doc, "clean.md")   # silver 우선(bronze 폴백)
-    if os.path.exists(silver):
-        return open(silver, encoding="utf-8").read()
+    processed = os.path.join(HERE, "..", "data/output/processed", doc, "clean.md")   # processed 우선(raw 폴백)
+    if os.path.exists(processed):
+        return open(processed, encoding="utf-8").read()
     path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
     return open(path, encoding="utf-8").read()
 

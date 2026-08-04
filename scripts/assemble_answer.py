@@ -33,7 +33,7 @@ et = _load("extract_terms")
 pc = _load("parse_clauses")
 jc = _load("judge_coverage")
 er = _load("extract_exclusion_reasons")
-st = _load("stage")                                   # silver resolver(clean.md·clauses.jsonl 캐시)
+st = _load("stage")                                   # processed resolver(clean.md·clauses.jsonl 캐시)
 GOLDEN = os.path.join(HERE, "..", "data", "eval", "golden_completeness.jsonl")
 
 # 담보 키워드 → 소속 문서

@@ -55,9 +55,9 @@ _STUB = [
 
 def _table_text(doc: str) -> str:
     """불규칙 지급표 영역(암진단비 15세축 표)만 잘라 LLM에 넘길 텍스트."""
-    silver = os.path.join(HERE, "..", "data/output/silver", doc, "clean.md")   # silver 우선(bronze 폴백)
-    if os.path.exists(silver):
-        lines = open(silver, encoding="utf-8").read().split("\n")
+    processed = os.path.join(HERE, "..", "data/output/processed", doc, "clean.md")   # processed 우선(raw 폴백)
+    if os.path.exists(processed):
+        lines = open(processed, encoding="utf-8").read().split("\n")
     else:
         path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
         lines = open(path, encoding="utf-8").read().split("\n")

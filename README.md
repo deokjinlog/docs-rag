@@ -150,7 +150,7 @@ flowchart LR
 | [architecture.md](docs/architecture.md) | 시스템 구성, 포트, 데이터 흐름, 장애 대응 |
 | [domain-model.md](docs/domain-model.md) | 약관 도메인 토대 (표준약관·주계약↔특약 준용·별표·payout_rule) |
 | [eval-and-golden.md](docs/eval-and-golden.md) | 평가·골든셋 방법론 (precision-first·완결성 게이트·ICD 판정) |
-| [data-staging.md](docs/data-staging.md) | 데이터 스테이징 (medallion bronze/silver/gold, 재청킹 소스) |
+| [data-staging.md](docs/data-staging.md) | 데이터 스테이징 (raw → processed → DB, 재청킹 소스) |
 | [pipeline.md](docs/pipeline.md) | 서빙 (라우팅, CRAG, 프롬프트, 근거 확인) |
 | [chunking.md](docs/chunking.md) | 청킹 전략 (adaptive/fixed, OCR, sibling 복원) |
 | [design-retrospective.md](docs/design-retrospective.md) | 설계 회고 — 판단기준·실측·개선 전략 |

@@ -23,7 +23,7 @@ def _load(name):
 
 
 pc = _load("parse_clauses")
-st = _load("stage")                                   # silver resolver(clean.md·clauses.jsonl 캐시)
+st = _load("stage")                                   # processed resolver(clean.md·clauses.jsonl 캐시)
 EXCL_TITLE = ("지급하지 않", "지급하지아니", "보상하지 않", "보장하지 않")
 
 # 표준 면책 사유 → 원문 키워드(표기변이 흡수). 표준약관 공통 사유 + 상품별.

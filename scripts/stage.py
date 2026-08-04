@@ -1,17 +1,19 @@
-"""Bronze→Silver 스테이징 (medallion) — 원본 추출물을 정제·구조화한 '재청킹·재추출 소스'.
+"""raw→processed(전처리) 스테이징 — 원본 추출물을 정제·구조화한 '재청킹·재추출 소스'.
 
-  bronze  data/output/raw/{doc}.md · .json · _images   (ODL 원본, immutable)
-  silver  data/output/silver/{doc}/                     (이 파일이 생성)
-            clean.md       안전 최소 정규화(BOM·트레일링공백·과다빈줄) — 추출 불변
-            clauses.jsonl  조 파싱(jo·title·text) 캐시 — 관계형·청킹 공용(파싱 1회)
-            profile.json   포맷 프로파일(전각/반각·복합문서·페이지수)
-  gold    PostgreSQL·Qdrant                              (청크·벡터·관계형, 파일 아님)
+리터럴 이름(raw/processed)을 쓰되 개념은 medallion 표준(raw=bronze / processed=silver / DB=gold).
+
+  raw        data/output/raw/{doc}.md · .json · _images   (ODL 원본, immutable = bronze)
+  processed  data/output/processed/{doc}/                 (이 파일이 생성 = silver)
+               clean.md       안전 최소 정규화(BOM·트레일링공백·과다빈줄) — 추출 불변
+               clauses.jsonl  조 파싱(jo·title·text) 캐시 — 관계형·청킹 공용(파싱 1회)
+               profile.json   포맷 프로파일(전각/반각·복합문서·페이지수)
+  DB         PostgreSQL·Qdrant                            (청크·벡터·관계형, 파일 아님 = gold)
 
 정제(normalize)는 '측정 후 확장' 원칙 — 지금은 추출 결과를 안 바꾸는 안전 정규화만.
 공격적 정규화(전각→반각 통일 등)는 자체 골든 통과 후 여기에 얹는다(precision-first).
 
-공용 resolver: doc_md(doc)/doc_clauses(doc) — silver 있으면 silver, 없으면 bronze 폴백.
-용법: python3 scripts/stage.py        # 전 문서 silver/ 생성
+공용 resolver: doc_md(doc)/doc_clauses(doc) — processed 있으면 processed, 없으면 raw 폴백.
+용법: python3 scripts/stage.py        # 전 문서 processed/ 생성
 """
 import os
 import re
@@ -21,7 +23,7 @@ import importlib.util
 
 HERE = os.path.dirname(__file__)
 BRONZE = os.path.join(HERE, "..", "data", "output", "raw")
-SILVER = os.path.join(HERE, "..", "data", "output", "silver")
+PROCESSED = os.path.join(HERE, "..", "data", "output", "processed")
 
 
 def _load(name):
@@ -61,7 +63,7 @@ def profile(doc: str, md: str) -> dict:
 
 def stage(doc: str) -> int:
     md = normalize(_bronze_md(doc))
-    d = os.path.join(SILVER, doc)
+    d = os.path.join(PROCESSED, doc)
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "clean.md"), "w", encoding="utf-8").write(md)
     clauses = pc.parse_clauses(md, "X")
@@ -78,24 +80,24 @@ def stage_all():
     docs = [os.path.basename(p)[:-3] for p in glob.glob(os.path.join(BRONZE, "*.md"))]
     for doc in sorted(docs):
         n = stage(doc)
-        p = json.load(open(os.path.join(SILVER, doc, "profile.json"), encoding="utf-8"))
-        print(f"  silver/{doc[:18]:<20} 조 {n:>3}  {p['format']}  복합={p['compound']}")
+        p = json.load(open(os.path.join(PROCESSED, doc, "profile.json"), encoding="utf-8"))
+        print(f"  processed/{doc[:18]:<20} 조 {n:>3}  {p['format']}  복합={p['compound']}")
     return docs
 
 
-# ── 공용 resolver (스크립트가 silver 우선, 없으면 bronze 폴백) ──────────────
+# ── 공용 resolver (스크립트가 processed 우선, 없으면 raw 폴백) ──────────────
 def doc_md(doc: str) -> str:
-    p = os.path.join(SILVER, doc, "clean.md")
+    p = os.path.join(PROCESSED, doc, "clean.md")
     return open(p, encoding="utf-8").read() if os.path.exists(p) else _bronze_md(doc)
 
 
 def doc_clauses(doc: str) -> list:
-    p = os.path.join(SILVER, doc, "clauses.jsonl")
+    p = os.path.join(PROCESSED, doc, "clauses.jsonl")
     if os.path.exists(p):
         return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
     return pc.parse_clauses(doc_md(doc), "X")
 
 
 if __name__ == "__main__":
-    print("bronze → silver 스테이징:")
+    print("raw → processed 스테이징:")
     stage_all()
