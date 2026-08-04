@@ -76,6 +76,7 @@
 - `scripts/judge_coverage.py` — 별표3 ICD 보장판정(담보특정성·제외우선·판정불가), 골든 `golden_coverage.jsonl` 7/7
 - `assemble_answer.py --reconcile` — 사실 화해(보장판정이 payout 게이팅·리다이렉트), 골든 `golden_reconcile.jsonl` 4/4
 - `scripts/extract_exclusion_reasons.py` — 면책 사유 목록(고의·전쟁·위험활동 등 표준 태그), 골든 `golden_exclusion.jsonl` 12/12
+- `scripts/extract_coverages.py` — 담보 catalog(상품별 담보 목록 + "X 보장 담보야?" 멤버십), 골든 `golden_catalog.jsonl` 13/13
 
 **로드맵:**
 | # | 할 일 | 성격 |
