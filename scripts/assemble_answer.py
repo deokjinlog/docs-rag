@@ -32,6 +32,7 @@ qp = _load("query_payout")
 et = _load("extract_terms")
 pc = _load("parse_clauses")
 jc = _load("judge_coverage")
+er = _load("extract_exclusion_reasons")
 GOLDEN = os.path.join(HERE, "..", "data", "eval", "golden_completeness.jsonl")
 
 # 담보 키워드 → 소속 문서
@@ -96,10 +97,14 @@ def assemble_answer(q: str) -> dict:
 
         ex = _exclusions(doc)                            # ④ 면책 강제첨부(담보별 고유는 특약이 자체 보유)
         if ex:
-            el["exclusion"] = ex
+            reasons = er.extract_exclusion_reasons(doc)  # "뭐가 안 돼요?"의 실제 사유 목록
+            el["exclusion"] = {"clause": ex, "reasons": reasons}
             tags.add("exclusion")
-            if is_rider:                                 # 진짜 준용 대상 = 보통약관 '공통' 면책(고의·전쟁 등)
-                el["exclusion_pending"] = "보통약관 공통면책(고의·자살·전쟁 등)은 준용 소관 — corpus 미확보 시 확인 필요"
+            if reasons:
+                tags.add("exclusion_reasons")
+            if is_rider:                                 # 특약에 '없는' 표준 공통면책만 준용 대상으로 짚음
+                missing = sorted({"고의", "전쟁내란", "임신출산", "위험활동", "직업위험"} - set(reasons))
+                el["exclusion_pending"] = f"보통약관 공통면책 준용 소관(특약 미기재): {', '.join(missing)} — corpus 미확보 시 확인"
                 tags.add("exclusion_common_pending")
 
         if tm.get("resolution_note"):
