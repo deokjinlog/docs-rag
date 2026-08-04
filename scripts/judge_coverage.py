@@ -29,6 +29,9 @@ DISEASE_COV = [
 
 
 def _md(doc: str) -> str:
+    silver = os.path.join(HERE, "..", "data/output/silver", doc, "clean.md")   # silver 우선(bronze 폴백)
+    if os.path.exists(silver):
+        return open(silver, encoding="utf-8").read()
     path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
     return open(path, encoding="utf-8").read()
 

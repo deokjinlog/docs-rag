@@ -131,9 +131,14 @@ _CACHE = {}
 def extract_payout(doc: str) -> list:
     """문서의 지급기준 → payout_rule 목록. 프로파일 A(별표1 3열) + B(기간구간 매트릭스)."""
     if doc not in _CACHE:
-        import glob
-        path = next(p for p in glob.glob("data/output/raw/*.md") if doc in p)
-        md = open(path, encoding="utf-8").read()
+        _here = pathlib.Path(__file__).parent
+        silver = _here.parent / "data" / "output" / "silver" / doc / "clean.md"   # silver 우선
+        if silver.exists():
+            md = silver.read_text(encoding="utf-8")
+        else:
+            import glob
+            path = next(p for p in glob.glob(str(_here.parent / "data/output/raw/*.md")) if doc in p)
+            md = open(path, encoding="utf-8").read()
         rules = [_parse_row(c) for c in _threecol_rows(md)]            # 프로파일 A (3열 지급기준표)
         rules += _matrix_rules(md)                                     # 프로파일 B (경과기간 매트릭스)
         _CACHE[doc] = rules

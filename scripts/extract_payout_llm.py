@@ -55,8 +55,12 @@ _STUB = [
 
 def _table_text(doc: str) -> str:
     """불규칙 지급표 영역(암진단비 15세축 표)만 잘라 LLM에 넘길 텍스트."""
-    path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
-    lines = open(path, encoding="utf-8").read().split("\n")
+    silver = os.path.join(HERE, "..", "data/output/silver", doc, "clean.md")   # silver 우선(bronze 폴백)
+    if os.path.exists(silver):
+        lines = open(silver, encoding="utf-8").read().split("\n")
+    else:
+        path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
+        lines = open(path, encoding="utf-8").read().split("\n")
     out = [ln for ln in lines if ln.strip().startswith("|") and
            ("진단자금" in ln or "15세" in ln or "90일" in ln or "지급금액" in ln)]
     return "\n".join(out)

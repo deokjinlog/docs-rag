@@ -33,6 +33,7 @@ et = _load("extract_terms")
 pc = _load("parse_clauses")
 jc = _load("judge_coverage")
 er = _load("extract_exclusion_reasons")
+st = _load("stage")                                   # silver resolver(clean.md·clauses.jsonl 캐시)
 GOLDEN = os.path.join(HERE, "..", "data", "eval", "golden_completeness.jsonl")
 
 # 담보 키워드 → 소속 문서
@@ -45,14 +46,9 @@ COV_DOC = {
 EXCL_KW = ("지급하지 않", "지급하지아니", "보상하지 않", "보장하지 않", "면책")
 
 
-def _md(doc: str) -> str:
-    path = next(p for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if doc in p)
-    return open(path, encoding="utf-8").read()
-
-
 def _exclusions(doc: str) -> list:
     """강제첨부용 — 문서의 면책 조 제목(제목규칙). 담보 물어봐도 항상 붙인다."""
-    clauses = pc.parse_clauses(_md(doc), "X")
+    clauses = st.doc_clauses(doc)                     # clauses.jsonl 캐시(없으면 파싱 폴백)
     return [c["title"] for c in clauses if any(k in c["title"] for k in EXCL_KW)][:3]
 
 
