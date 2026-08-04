@@ -133,6 +133,27 @@ def assemble_answer(q: str) -> dict:
 
 
 # ── 완결성 골든 채점 ────────────────────────────────────────────────
+def format_answer(a: dict) -> str:
+    """조립된 구조화 팩트 → 소비자용 답변 합성(결정론 템플릿). 근거는 element별 골든 검증."""
+    el = a["elements"]
+    out = []
+    if "final" in el:                                       # 보장 여부(화해된 결론) 우선
+        out.append(f"• 보장: {el['final']}")
+    elif "coverage_scope" in el:
+        out.append(f"• 보장범위: {el['coverage_scope']}")
+    if "payout" in el:
+        out.append(f"• 지급: {el['payout']}")
+    if "exclusion" in el and el["exclusion"].get("reasons"):
+        out.append(f"• 면책 사유: {', '.join(el['exclusion']['reasons'])}")
+    if "exclusion_pending" in el:
+        out.append(f"• 주의: {el['exclusion_pending']}")
+    if "cooling_off" in el:
+        out.append(f"• {el['cooling_off']}")
+    if "resolution" in el:
+        out.append(f"• {el['resolution']}")
+    return "\n".join(out) if out else "관련 정보를 찾지 못했습니다(→RAG)."
+
+
 def _score_reconcile():
     """사실 화해 채점 — 보장판정 verdict + 리다이렉트 담보가 맞나."""
     g = os.path.join(HERE, "..", "data", "eval", "golden_reconcile.jsonl")
@@ -162,6 +183,8 @@ def main():
         for k, v in a["elements"].items():
             print(f"  [{k}] {v}")
         print(f"  태그: {sorted(a['tags'])}")
+        print("\n─ 합성 답변 ─")
+        print(format_answer(a))
         return
 
     rows = [json.loads(l) for l in open(GOLDEN, encoding="utf-8") if l.strip()]

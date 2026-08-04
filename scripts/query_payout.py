@@ -51,8 +51,9 @@ def _intent(q: str) -> dict:
         if kw in q:
             it["coverage"] = kw
             break
-    if re.search(r"질병|병으로|아파", q):        it["cause"] = "질병"
-    elif re.search(r"재해|상해|다쳐|사고", q):    it["cause"] = "상해"
+    if re.search(r"재해\s*(?:가\s*)?(?:아닌|이외|외|제외|아니)", q):  it["cause"] = "질병"   # '재해 아닌' = 질병(부정)
+    elif re.search(r"질병|병으로|아파", q):                          it["cause"] = "질병"
+    elif re.search(r"재해|상해|다쳐|사고", q):                        it["cause"] = "상해"
     if re.search(r"15세\s*이상|성인", q):         it["age_band"] = "15세이상"
     elif re.search(r"15세\s*미만|어린|아동", q):  it["age_band"] = "15세미만"
     if re.search(r"90일\s*(이내|안|이하|전)", q):                    it["period_bucket"] = "90일이하"
@@ -64,13 +65,17 @@ def _intent(q: str) -> dict:
 def answer(q: str) -> dict | None:
     """질의 → payout_rule SELECT(대역) → 결정론 결과 1건."""
     it = _intent(q)
+    cands = [r for r in _all_rows()
+             if "coverage" not in it or it["coverage"] in (r.get("coverage") or "")]
     hits = []
-    for r in _all_rows():
-        if "coverage" in it and it["coverage"] not in (r.get("coverage") or ""):
-            continue
+    for r in cands:
         skip = False
         for k in ("cause", "age_band", "period_bucket"):    # 원인·연령·경과기간은 하드 필터
-            if k in it and (r.get(k) or None) != it[k]:
+            if k not in it:
+                continue
+            if all((c.get(k) or None) is None for c in cands):   # 이 담보가 안 쓰는 축이면 필터 스킵(중환자실=cause 없음)
+                continue
+            if (r.get(k) or None) != it[k]:
                 skip = True
                 break
         if not skip:
