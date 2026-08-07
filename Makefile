@@ -37,6 +37,9 @@ test-rag: ## tests/rag/ 만
 test-guards: ## tests/guards/ 만
 	uv run pytest tests/guards/ -v
 
+check: ## 관계형 추출 자립 골든 9종 + 전처리 게이트 (배포 관문, 스택 불필요, 회귀 시 exit 1)
+	python3 scripts/check.py
+
 
 # ─── Eval & Observability ─────────────────────────────────────────────────
 

@@ -78,6 +78,7 @@
 - `scripts/extract_exclusion_reasons.py` — 면책 사유 목록(고의·전쟁·위험활동 등 표준 태그), 골든 `golden_exclusion.jsonl` 12/12
 - `scripts/extract_coverages.py` — 담보 catalog(상품별 담보 목록 + "X 보장 담보야?" 멤버십), 골든 `golden_catalog.jsonl` 13/13
 - `scripts/gate.py` — 전처리 품질 게이트(한글비율·조 1..N·조 개수·조 길이·별표 해소), FAIL 문서는 gold 진입 차단 (로드맵 A2)
+- `scripts/check.py` (`make check`) — CI 게이트: 전 골든 9종 + 전처리 게이트 한 번에, 회귀 시 exit 1 → 배포/머지 차단 (로드맵 C7)
 
 **로드맵:**
 | # | 할 일 | 성격 |
