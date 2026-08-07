@@ -94,6 +94,16 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 
 근거: 검증 안 된 verifier를 메인 경로에 끼우면 false positive가 hard_fail rate를 폭증시켜 시스템 신뢰도가 오히려 하락. 현재 `semantic_judge` slot이 비어있는 이유 (README "검증되지 않은 영역" 섹션 참조).
 
+## 관계형 추출 계층 (SQL 경로 · 스택 없이 자립 검증)
+
+RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로 적재**하는 계층. 소비자 "얼마·언제·보장·면책"에 확률적 검색이 아닌 결정론 답. `data/output/raw/*.md`만으로 도는 자립 루프(golden 채점, docker 불필요).
+
+- **스테이징**: `scripts/stage.py` (raw→processed: `clean.md`·`clauses.jsonl`·`profile.json`). 소비는 `stage.doc_md(doc)`/`doc_clauses(doc)` (processed 우선·raw 폴백). → @docs/data-staging.md
+- **추출**: `extract_payout`(지급률·감액) / `extract_terms`(청약철회·갱신·만기, 특약은 준용 NULL) / `extract_exclusion_reasons`(면책 사유) / `judge_coverage`(별표3 ICD, 담보특정성·제외우선·판정불가) / `extract_coverages`(담보 catalog). 룰베 코어 + `extract_payout_llm`(불규칙 표 LLM 폴백 사이드카, 실 LLM은 env `LLM_BASE_URL`).
+- **조립·게이트**: `assemble_answer`(엣지 조립 + 완결성 게이트 + reconcile + 합성) / `gate.py`(전처리 품질) / **`make check`**(전 골든 9종 + 게이트, 회귀 시 exit 1 = 배포 관문).
+- **핵심 규율**: precision-first(못 뽑으면 NULL→RAG, FP 0) · 준용 NULL=정답(TN) · 골든 무회귀(순증) · LLM은 stub 아닌 실 vLLM 재측정이 진짜 게이트. 방법론·골든셋 상세 @docs/eval-and-golden.md, 도메인 @docs/domain-model.md.
+- **주의**: 관계형 테이블(`db/schema_insurance.sql`: product·clause·clause_ref·annex·annex_row·coverage_exclusion_map·payout_rule)은 실 DB 적재·src/v1 router 배선이 아직(코드 준비, 스택 대기). 골든은 `data/eval/golden_*.jsonl`(force-add, data/ gitignore 예외).
+
 ## 도메인 용어
 
 **데이터 & 상태**
@@ -172,3 +182,4 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 - @docs/architecture.md : 시스템 구성도, 데이터 흐름, 성능 수치, 장애 대응
 - @docs/pipeline.md     : RAG 서빙 (쿼리 라우팅, CRAG, 프롬프트, Self-RAG)
 - @docs/chunking.md     : 청킹 전략 (adaptive/fixed, OCR 파이프라인 3단계 필터, sibling 복원)
+- @docs/data-staging.md : 데이터 스테이징 (raw→processed→DB, 재청킹 소스, stage.py resolver)
