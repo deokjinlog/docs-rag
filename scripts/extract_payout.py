@@ -80,11 +80,11 @@ RE_BUCKET_HDR = re.compile(r'90\s*일\s*(이하|초과)')            # 경과기
 
 
 def _bucket(h: str):
-    """경과기간 헤더 셀 → 정규화 버킷 라벨."""
+    """경과기간 헤더 셀 → 정규화 버킷 라벨. 경과기간(90일/1년) 컨텍스트를 요구(홑 '이하' 오탐 방지)."""
     h = h.replace(" ", "")
-    if "이하" in h:               return "90일이하"
-    if "초과" in h and "미만" in h: return "90일초과1년미만"
-    if "이상" in h:               return "1년이상"
+    if "90일" in h and "이하" in h:  return "90일이하"
+    if "초과" in h and "미만" in h:   return "90일초과1년미만"
+    if "1년" in h and "이상" in h:    return "1년이상"
     return None
 
 
@@ -94,6 +94,9 @@ def _matrix_rules(md: str) -> list:
     rules, cause, i = [], None, 0
     while i < len(lines):
         ln = lines[i]
+        # cause는 문서-스코프로 이어짐(마지막 '◦ ~를 원인으로'). 한계: 원인 마커 없는
+        # 매트릭스(예: <재가입계약> 표)는 직전 cause를 상속 → 그 표만 쓰면 오분류 가능.
+        # 현재 골든 담보(레진·금인레이)는 마커 있는 표에서 잡혀 무해. 마커 필수화는 후속.
         cm = RE_CAUSE.search(ln)
         if cm:
             cause = "상해" if cm.group(1) in ("상해", "재해") else "질병"

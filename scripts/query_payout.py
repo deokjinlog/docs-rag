@@ -51,7 +51,7 @@ def _intent(q: str) -> dict:
         if kw in q:
             it["coverage"] = kw
             break
-    if re.search(r"재해\s*(?:가\s*)?(?:아닌|이외|외|제외|아니)", q):  it["cause"] = "질병"   # '재해 아닌' = 질병(부정)
+    if re.search(r"재해\s*(?:가\s*)?(?:아닌|이외|제외|아니)", q):  it["cause"] = "질병"   # '재해 아닌'=질병. 홑 '외'는 외상/외과 오매칭이라 뺌
     elif re.search(r"질병|병으로|아파", q):                          it["cause"] = "질병"
     elif re.search(r"재해|상해|다쳐|사고", q):                        it["cause"] = "상해"
     if re.search(r"15세\s*이상|성인", q):         it["age_band"] = "15세이상"
@@ -100,7 +100,9 @@ def _fmt(r: dict) -> str:
     unit = f"{r['per_unit']} " if r.get("per_unit") else ""
     parts.append(f"→ 가입금액의 {unit}{r['rate_pct']}%")
     if r.get("limit_days"):         parts.append(f"(한도 {r['limit_days']}일)")
-    if r.get("reduction_rate_pct"): parts.append(f"※{r['reduction_period']} {r['reduction_cause']} 시 {r['reduction_rate_pct']}% 감액")
+    if r.get("reduction_rate_pct"):
+        cond = " ".join(x for x in (r.get("reduction_period"), r.get("reduction_cause")) if x)  # 없는 조건은 생략(None 리터럴 방지)
+        parts.append(f"※{cond + ' 시' if cond else ''} {r['reduction_rate_pct']}% 감액".strip())
     return " ".join(parts)
 
 

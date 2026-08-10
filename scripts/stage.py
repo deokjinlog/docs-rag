@@ -66,6 +66,9 @@ def stage(doc: str) -> int:
     d = os.path.join(PROCESSED, doc)
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "clean.md"), "w", encoding="utf-8").write(md)
+    # 한계: 복합문서(보통약관+특약 N)는 parse_clauses가 '보통약관 조'만 반환(특약 각각은 제1조부터
+    # 재시작이라 1..N 불변식이 깨져 split_sections/ingest_compound로 별도 분해). 따라서 clauses.jsonl과
+    # 이를 쓰는 gate.py·extract_exclusion_reasons는 복합문서에서 '보통약관 조'만 검사·추출한다.
     clauses = pc.parse_clauses(md, "X")
     with open(os.path.join(d, "clauses.jsonl"), "w", encoding="utf-8") as f:
         for c in clauses:

@@ -53,7 +53,9 @@ def is_covered(doc: str, keyword: str):
 
 def main():
     if len(sys.argv) > 2:                                  # 멤버십 단건
-        doc = next(p.split("/")[-1][:-3] for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if sys.argv[1] in p)
+        doc = next((p.split("/")[-1][:-3] for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")) if sys.argv[1] in p), None)
+        if not doc:
+            print(f"문서 '{sys.argv[1]}' 없음"); return
         hit = is_covered(doc, sys.argv[2])
         print(f"{sys.argv[2]} → {'보장 담보 있음: '+hit if hit else '해당 담보 없음(→RAG)'}")
         return
@@ -67,7 +69,7 @@ def main():
         ok = "✅" if not missing else f"❌ 빠짐={missing}"
         print(f"{r['doc'][:16]:<18} 담보 {len(cat)}개  필수 {len(r['must_include'])}  {ok}")
     print("-" * 50)
-    print(f"필수담보 recall={hit/tot:.2f} ({hit}/{tot})  → 상품별 담보 catalog + 멤버십")
+    print(f"필수담보 recall={hit/tot if tot else 1.0:.2f} ({hit}/{tot})  → 상품별 담보 catalog + 멤버십")
 
 
 if __name__ == "__main__":

@@ -121,16 +121,17 @@ def _score(name, rules, rows):
     for r in rows:
         pred = _predict(rules, r)
         g, p = _norm(r["expected"]), _norm(pred)
-        cat = ("TP" if g == p and g is not None else
+        cat = ("TN" if g is None and p is None else       # 맞게 비움(정률 NULL도 정답)
+               "TP" if g == p and g is not None else
                "FN" if p is None else "FP")
         C[cat] += 1
-        mark = {"TP": "✅", "FN": "❌FN", "FP": "❌FP"}[cat]
+        mark = {"TP": "✅", "TN": "✅TN", "FN": "❌FN", "FP": "❌FP"}[cat]
         key = f"{r['coverage'][:8]}/{r.get('age') or ''}/{r.get('period_bucket') or ''}"
         print(f"  {key:<28} 정답 {str(r['expected']):<4} 추출 {str(pred):<6}{mark}")
     rec = C["TP"] / (C["TP"] + C["FN"]) if (C["TP"] + C["FN"]) else 1.0
     prec = C["TP"] / (C["TP"] + C["FP"]) if (C["TP"] + C["FP"]) else 1.0
-    print(f"  → recall={rec:.2f} precision={prec:.2f} (TP{C['TP']} FN{C['FN']} FP{C['FP']})")
-    return prec
+    print(f"  → recall={rec:.2f} precision={prec:.2f} (TP{C['TP']} FN{C['FN']} FP{C['FP']} TN{C['TN']})")
+    return rec, prec
 
 
 def main():
@@ -141,13 +142,15 @@ def main():
     s = importlib.util.spec_from_file_location("ep", os.path.join(HERE, "extract_payout.py"))
     ep = importlib.util.module_from_spec(s); s.loader.exec_module(ep)
 
-    rule_prec = _score("룰베(프로파일 A/B)", ep.extract_payout(doc), rows)
-    llm_prec = _score("LLM 폴백 사이드카", llm_extract(doc), rows)
+    rule_rec, rule_prec = _score("룰베(프로파일 A/B)", ep.extract_payout(doc), rows)
+    llm_rec, llm_prec = _score("LLM 폴백 사이드카", llm_extract(doc), rows)
 
     print(f"\n{'='*50}")
-    print(f"게이트(CLAUDE.md ≥0.90): 룰베 {rule_prec:.2f} / LLM {llm_prec:.2f}")
-    verdict = "승격 후보(사이드카→폴백)" if llm_prec >= 0.9 else "사이드카 유지(정밀도 부족)"
-    print(f"→ LLM 폴백 판정: {verdict}")
+    # precision-first라 룰베 precision은 vacuous 1.00(미탐은 FN) → 차별자는 recall.
+    print(f"게이트(CLAUDE.md precision≥0.90): 룰베 P{rule_prec:.2f}·R{rule_rec:.2f} / LLM P{llm_prec:.2f}·R{llm_rec:.2f}")
+    print(f"→ 룰베가 놓치는 것(recall {rule_rec:.2f})을 LLM(recall {llm_rec:.2f})이 메꿈 = 사이드카 정당화")
+    ok = llm_prec >= 0.9 and llm_rec > rule_rec              # precision 게이트 통과 + recall 순증
+    print(f"→ LLM 폴백 판정: {'승격 후보(사이드카→폴백)' if ok else '사이드카 유지'}")
 
 
 if __name__ == "__main__":

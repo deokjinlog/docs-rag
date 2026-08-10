@@ -113,7 +113,7 @@ def assemble_answer(q: str) -> dict:
         rng = jc.coverage_ranges(doc)                    # ① 보장범위 (별표3 ICD 판정 홉)
         cov_name = next((c for c in rng if it.get("coverage") and it["coverage"] in c), None)
         if cov_name:
-            code = re.search(r'[A-Z]\d{2}(?:\.\d)?', q)  # 질문에 코드 있으면 특정 판정(C/D 외 Z 등도)
+            code = re.search(r'\b[A-Z]\d{2}(?:\.\d)?', q)  # 단어경계 시작(\b)로 COVID19→D19 오탐 방지; 끝 \b는 한글인접(Z99면) 깨져서 미포함
             if code:
                 v = jc.judge(doc, code.group(), cov_name)
                 el["coverage_scope"] = f"{code.group()} → {v['verdict']} ({v['evidence']})"
