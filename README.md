@@ -44,6 +44,9 @@ flowchart LR
 ## 빠른 시작
 
 ```bash
+# 0. 스택 없이 관계형 추출 계층 자립 검증 (골든 10종 + 전처리 게이트, docker 불필요)
+make check          # 회귀 시 exit 1 = 배포 관문
+
 # 1. 전체 스택 빌드 + 기동 (API · Celery · vLLM · Qdrant · PostgreSQL · RabbitMQ · OCR)
 docker compose build && docker compose up -d
 
