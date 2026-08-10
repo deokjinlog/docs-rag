@@ -64,6 +64,7 @@
 
 **구현됨:**
 - `scripts/parse_clauses.py` — 1..N 연속 검증(구조 게이트)
+- `scripts/parse_golden.py` — 파싱 골든셋(조 수·조 제목 정답 대조), 골든 `golden_parse.jsonl` 12/12 — 게이트(sanity)와 별개로 파싱 순증/회귀 판정
 - `scripts/validate_extraction.py` — precision 게이트 프로토(원문 대조)
 - `scripts/golden_eval.py` — 골든 채점(필드별 precision/recall, `_norm` 정규화)
 - `data/eval/golden.jsonl` — SQL 추출 골든셋(담보명·계약유형·면책기간, evidence 포함)

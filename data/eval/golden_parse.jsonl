@@ -1,0 +1,12 @@
+{"doc":"라이나_중환자실입원특약","field":"clause_count","expected":19,"evidence":"조 파싱 수","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"title@5","expected":"지급사유","evidence":"제5조 지급사유","labeler":"최덕진"}
+{"doc":"라이나_중환자실입원특약","field":"title@7","expected":"지급하지 않는 사유","evidence":"제7조 면책","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","field":"clause_count","expected":20,"evidence":"조 파싱 수","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","field":"title@5","expected":"지급사유","evidence":"제5조 지급사유","labeler":"최덕진"}
+{"doc":"라이나_소득보장수술특약","field":"title@7","expected":"지급하지 않는 사유","evidence":"제7조 면책","labeler":"최덕진"}
+{"doc":"New치아보험_약관","field":"clause_count","expected":45,"evidence":"보통약관 조 수","labeler":"최덕진"}
+{"doc":"New치아보험_약관","field":"title@3","expected":"지급사유","evidence":"제3조 지급사유","labeler":"최덕진"}
+{"doc":"New치아보험_약관","field":"title@6","expected":"지급하지 않는 사유","evidence":"제6조 면책","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","field":"clause_count","expected":41,"evidence":"보통약관 조 수","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","field":"title@3","expected":"지급사유","evidence":"제3조 지급사유","labeler":"최덕진"}
+{"doc":"다이렉트늘안심입원비보험_약관","field":"title@5","expected":"지급하지 않는 사유","evidence":"제5조 면책","labeler":"최덕진"}

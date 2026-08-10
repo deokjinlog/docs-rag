@@ -13,6 +13,7 @@ HERE = os.path.dirname(__file__)
 
 # (이름, [스크립트, 인자...]) — 각 스크립트는 실패 행에 ❌를 찍는다(공통 규약).
 CHECKS = [
+    ("parse",        ["parse_golden.py"]),          # 파싱 골든(조 수·제목 정답 대조)
     ("payout",       ["extract_payout.py"]),
     ("payout_qa",    ["query_payout.py"]),
     ("terms",        ["extract_terms.py"]),
