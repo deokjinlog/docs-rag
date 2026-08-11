@@ -70,6 +70,12 @@ EVAL_QUESTIONS = [
     {"query": "위법계약 해지 절차가 어떻게 되나요?", "service_code": "01", "document_id": "0012", "expected_type": "procedure"},
 ]
 
+# 현재 색인 문서용 질문셋을 파일에서 로드(있으면 override). 위 하드코딩은 구 문서(0011~0013) 폴백.
+# golden_ragas.jsonl = {query, service_code, document_id, expected_type} — 검색 골든과 동일 문서 기준.
+_RAGAS_GOLDEN = os.path.join(os.path.dirname(__file__), "..", "data", "eval", "golden_ragas.jsonl")
+if os.path.exists(_RAGAS_GOLDEN):
+    EVAL_QUESTIONS = [json.loads(l) for l in open(_RAGAS_GOLDEN, encoding="utf-8") if l.strip()]
+
 
 # ==============================================================================
 # Synthetic feedback (실험적 — 파이프라인 검증 목적만)

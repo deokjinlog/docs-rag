@@ -1,0 +1,10 @@
+{"query": "간병인 사용 확인서로 인정되는 서류에는 어떤 것들이 있나요?", "service_code": "01", "document_id": "R04", "expected_type": "procedure"}
+{"query": "간병인사용 입원급여금은 입원 하루당 얼마를 지급하나요?", "service_code": "01", "document_id": "R04", "expected_type": "simple_fact"}
+{"query": "해지된 특약을 다시 살릴 수 있나요?", "service_code": "01", "document_id": "R04", "expected_type": "interpretation"}
+{"query": "가입 후 일정 기간 동안 보험금이 감액되어 지급되나요?", "service_code": "01", "document_id": "R04", "expected_type": "interpretation"}
+{"query": "소득보장수술은 어떻게 정의되나요?", "service_code": "01", "document_id": "R02", "expected_type": "interpretation"}
+{"query": "소득보장수술 보험금 청구 시 어떤 서류가 필요한가요?", "service_code": "01", "document_id": "R02", "expected_type": "procedure"}
+{"query": "소득보장수술특약을 해지하면 해약환급금은 어떻게 계산되나요?", "service_code": "01", "document_id": "R02", "expected_type": "interpretation"}
+{"query": "중환자실은 어떻게 정의되나요?", "service_code": "01", "document_id": "R01", "expected_type": "interpretation"}
+{"query": "중환자실 입원급여금은 언제 지급되나요?", "service_code": "01", "document_id": "R01", "expected_type": "simple_fact"}
+{"query": "보험료 납입을 연체하면 이 특약은 어떻게 되나요?", "service_code": "01", "document_id": "R01", "expected_type": "interpretation"}
