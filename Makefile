@@ -78,3 +78,12 @@ mem: ## 컨테이너별 메모리 사용/상한 + WSL 스왑 (mem_limit 튜닝·
 recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소실) 네트워크째 재생성
 	docker compose down && docker compose up -d
 	@echo "→ vLLM 재로드 1~2분 대기 후 /answer 가능 (make mem 으로 메모리 확인)"
+
+lite: ## 경량 모드 — on-demand 서비스(vLLM·paddle·odl) 중지, ~5GB 확보. 다른 작업(Ralph 등)과 공존용. 검색/관계형/eval은 그대로 됨(/answer·색인만 불가)
+	docker compose stop vllm paddle odl
+	@echo "→ 검색·관계형·make check·make eval-retrieval 가능. /answer·색인 필요하면 make full"
+	@$(MAKE) --no-print-directory mem
+
+full: ## 전체 모드 — 색인·/answer 위해 vLLM·paddle·odl 복귀 (vLLM 재로드 1~2분)
+	docker compose start vllm paddle odl || docker compose up -d vllm paddle odl
+	@echo "→ vLLM 재로드 1~2분 후 /answer 가능"
