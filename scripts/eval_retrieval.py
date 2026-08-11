@@ -28,6 +28,7 @@ import pathlib
 import unicodedata
 import urllib.request
 import urllib.error
+import http.client
 
 _HERE = pathlib.Path(__file__).parent
 GOLDEN = _HERE.parent / "data" / "eval" / "golden_retrieval.jsonl"
@@ -47,19 +48,44 @@ def _norm(s: str) -> str:
     return s.lower()
 
 
-def _retrieve(query: str, service_code: str, document_id: str | None) -> list[dict]:
-    """POST /retrieve → sources 리스트(rerank 정렬). 스택 미가동이면 예외를 위로 던진다."""
+def _wait_api(max_wait: int = 90) -> bool:
+    """API가 200 줄 때까지 대기(최대 max_wait초). 8GB 박스에서 무거운 쿼리가
+    API 컨테이너를 OOM-kill → unless-stopped로 자동 재시작되는 주기를 견디기 위함."""
+    import time
+    probe = f"{API_BASE}/documents/01/R04"
+    for _ in range(max_wait // 3):
+        try:
+            with urllib.request.urlopen(probe, timeout=5) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(3)
+    return False
+
+
+def _retrieve(query: str, service_code: str, document_id: str | None, retries: int = 3) -> list[dict]:
+    """POST /retrieve → sources 리스트(rerank 정렬). 연결 끊김(무거운 쿼리 OOM-restart)이면
+    API 복구를 기다렸다가 재시도. retries 소진 후에도 실패면 예외를 위로 던진다(진짜 다운)."""
+    import time
     body = {"query": query, "service_code": service_code, "top_k": TOP_K}
     if document_id:
         body["document_id"] = document_id
-    req = urllib.request.Request(
-        f"{API_BASE}/retrieve",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=180) as r:  # 8GB 박스에서 dense_heavy는 CPU 리랭커가 느림(vLLM과 경합)
-        return json.loads(r.read().decode("utf-8")).get("sources", [])
+    payload = json.dumps(body).encode("utf-8")
+    for attempt in range(1, retries + 1):
+        req = urllib.request.Request(
+            f"{API_BASE}/retrieve", data=payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:  # dense_heavy는 CPU 리랭커가 느림(vLLM과 경합)
+                return json.loads(r.read().decode("utf-8")).get("sources", [])
+        except (urllib.error.URLError, ConnectionError, TimeoutError, http.client.RemoteDisconnected) as e:
+            if attempt == retries:
+                raise
+            print(f"    ↻ 연결 끊김({type(e).__name__}) — API 복구 대기 후 재시도 {attempt}/{retries-1}")
+            _wait_api()
+            time.sleep(2)
 
 
 def _rank_of_anchor(sources: list[dict], anchor: str) -> tuple[int, float]:

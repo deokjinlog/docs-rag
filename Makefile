@@ -6,7 +6,8 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval feedback-submit trace trace-feedback smoke eval-ocr eval-index
+        eval eval-retrieval feedback-submit trace trace-feedback smoke eval-ocr eval-index \
+        mem recover
 
 
 # ─── Local Dev (host에서 직접 띄울 때, docker 미사용) ─────────────────────
@@ -66,3 +67,14 @@ eval-ocr: ## OCR 필터 통과율 + confidence 분포
 
 eval-index: ## Qdrant 벡터 공간 헬스 (Dispersion + Confusion Rate)
 	uv run python scripts/eval_index_health.py
+
+
+# ─── Infra / Health (로컬 8GB·WSL 안정성) ─────────────────────────────────
+
+mem: ## 컨테이너별 메모리 사용/상한 + WSL 스왑 (mem_limit 튜닝·api 누수 감시)
+	@docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" | grep -E 'NAME|docs-rag'
+	@echo "── WSL ──"; free -h | awk 'NR<=3'
+
+recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소실) 네트워크째 재생성
+	docker compose down && docker compose up -d
+	@echo "→ vLLM 재로드 1~2분 대기 후 /answer 가능 (make mem 으로 메모리 확인)"

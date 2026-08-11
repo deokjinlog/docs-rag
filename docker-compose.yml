@@ -48,6 +48,7 @@ services:
   vllm:
     image: vllm/vllm-openai:v0.18.1
     container_name: docs-rag-vllm
+    mem_limit: 6g          # 시스템 RAM 상한(GPU VRAM은 별개). 실측 ~3GB, 넉넉한 천장 — 8GB 박스에서 한 컨테이너 폭주가 WSL 전체를 스왑으로 끌고 가는 것 차단
     ipc: host
     ports:
       - "8000:8000"
@@ -71,6 +72,7 @@ services:
   paddle:
     build: ./paddle
     container_name: docs-rag-paddle
+    mem_limit: 3g          # OCR(PP-StructureV3 CPU) 피크 방어. 실측 ~1.7-2.5GB
     ports:
       - "5003:5003"
     volumes:
@@ -89,6 +91,7 @@ services:
   odl:
     build: ./odl
     container_name: docs-rag-odl
+    mem_limit: 3g          # Java docling(대형 PDF) 피크 방어
     ports:
       - "5002:5002"
     volumes:
@@ -99,6 +102,7 @@ services:
     image: docs-rag-app
     build: .
     container_name: docs-rag-api
+    mem_limit: 3g          # ★ 누수 방어 핵심 — 실측 정상 1.5GB인데 수 시간 만에 4.58GB로 부풀어 WSL을 스왑으로 밀어넣고 qdrant·postgres·네트워크까지 동반 붕괴시킴. 3g에서 OOM-kill+자동재시작(unless-stopped)으로 국소 격리. 근본 누수는 별도 추적 대상
     command: uvicorn api:app --host 0.0.0.0 --port 8002 --app-dir src
     ports:
       - "8002:8002"
@@ -128,6 +132,7 @@ services:
   celery:
     image: docs-rag-app
     container_name: docs-rag-celery
+    mem_limit: 3g          # 임베딩 시 BGE-M3/리랭커 로드 피크 방어
     command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=10 -E
     working_dir: /app/src
     env_file: .env
@@ -150,6 +155,7 @@ services:
   flower:
     image: docs-rag-app
     container_name: docs-rag-flower
+    mem_limit: 512m        # 모니터링 UI — 작게 고정 (실측 ~440MB)
     command: celery -A celery_app:celery_app flower --port=5555
     working_dir: /app/src
     ports:
