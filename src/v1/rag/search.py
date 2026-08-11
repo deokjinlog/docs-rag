@@ -99,10 +99,20 @@ def search_and_rerank(
     if not points:
         return []
 
-    pairs = [(query, r.payload.get("content", "")) for r in points]
+    pairs = [(query, _rerank_text(r.payload)) for r in points]
     with trace_span("rerank"):
         scores = reranker.predict(pairs)
     return sorted(zip(points, scores), key=lambda x: x[1], reverse=True)[:top_k]
+
+
+def _rerank_text(payload: dict) -> str:
+    """리랭커 입력을 임베딩 텍스트와 동일하게(heading_path + content) 구성.
+    조 제목(예: '제15조 【특약의 갱신】')이 질의어와 매칭되도록 — 덴스 벡터는 이미 이 포맷이라
+    (embed.py `_embed_text`) 리랭커만 content-only면 heading 신호가 최종 순위에 반영되지 않는다.
+    실측: 청킹 heading 복구 후에도 '갱신' 질의가 rank2에 머문 원인이 이 불일치였다."""
+    heading_path = payload.get("heading_path") or ""
+    content = payload.get("content", "")
+    return f"{heading_path}\n\n{content}" if heading_path else content
 
 
 def rewrite_query(query: str) -> str:

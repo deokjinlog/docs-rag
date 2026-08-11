@@ -18,7 +18,47 @@ from ..config import TEXT_MAX_CHARS, TABLE_MAX_CHARS, CHUNK_MIN_CHARS
 
 _TABLE_SEPARATOR_RE = re.compile(r'^\|[\s\-:|]+\|$')
 
+# ODL 변환 편차 보정 — 조 제목이 heading이 아니라 리스트(`- 제15조 【…】`)/평문으로 오는 문서를
+# 청킹 전에 바로잡는다. heading은 markdown heading 라인에서만 나오므로(parse_heading 전제),
+# 소스를 고쳐야 조 단위 청킹·sibling 복원이 산다. 실측: 라이나 간병인 특약이 제13~15조를 리스트로,
+# 문장 꼬리 "기준으로 합니다."를 H6로 뱉어 갱신 조가 쓰레기 heading을 상속했다.
+_HEADING_LINE_RE = re.compile(r'^(#{1,6})\s+(.*)$')
+_ARTICLE_TITLE_RE = re.compile(r'^\s*[-*]?\s*(제\s*\d+\s*조(?:\s*의\s*\d+)?\s*【[^】]*】)\s*(.*)$')
+_ARTICLE_PROMOTE_LEVEL = 5                                   # #####  (실제 조 heading과 동일 레벨)
+_LEADER_RE = re.compile(r'\.{4,}|·{5,}|…{3,}')               # 점선 목차 잔해(ASCII 마침표 포함 — normalize가 못 잡음)
+_FRAGMENT_TAIL_RE = re.compile(r'(?:다|요|음|함|됨|임)\s*[.。]$')  # 문장 종결 꼬리(heading 오검출 신호)
+_STRUCT_MARKER_RE = re.compile(r'제\s*\d+\s*[조관장절편]|별표|【')
+
 log = logging.getLogger(__name__)
+
+
+def _repair_markdown_headings(text: str) -> str:
+    """조 제목(리스트/평문) → heading 승격 · 문장꼬리 heading → 본문 강등 · 점선 목차줄 제거.
+    ODL이 조 제목을 heading으로 뱉지 않는 문서에서 조 단위 grouping을 복구한다(precision-first:
+    구조가 뚜렷한 조 제목·명백한 문장꼬리만 건드리고, 애매하면 원본 유지)."""
+    out: list[str] = []
+    for line in text.split('\n'):
+        s = line.strip()
+        if _LEADER_RE.search(s):                              # 점선 목차 줄 제거(내비게이션·노이즈)
+            continue
+        h = _HEADING_LINE_RE.match(s)
+        if h:
+            htext = h.group(2).strip()
+            # 문장 종결로 끝나고 구조 마커가 없으면 heading 오검출 → 본문으로 강등
+            if _FRAGMENT_TAIL_RE.search(htext) and not _STRUCT_MARKER_RE.search(htext):
+                out.append(htext)
+            else:
+                out.append(line)
+            continue
+        a = _ARTICLE_TITLE_RE.match(s)                        # 조 제목(리스트/평문) → heading 승격
+        if a:
+            out.append('#' * _ARTICLE_PROMOTE_LEVEL + ' ' + a.group(1).strip())
+            rest = a.group(2).strip()
+            if rest:                                          # 제목 뒤에 붙은 본문은 별도 줄로
+                out.append(rest)
+            continue
+        out.append(line)
+    return '\n'.join(out)
 
 
 # 데이터 구조
@@ -440,6 +480,7 @@ def _chunk_tree(root: MdNode, source_file: str, service_code: str = "") -> list[
 def chunk_markdown(text: str, source_file: str = "", service_code: str = "") -> list[Chunk]:
     """메인 진입점: 마크다운 텍스트 → Chunk 리스트"""
     text = normalize_whitespace(text)
+    text = _repair_markdown_headings(text)      # ODL heading 편차 보정(조 승격·문장꼬리 강등·점선 제거)
     tree = _build_tree(text)
 
     # 헤딩 없는 문서 → 통짜 1 chunk

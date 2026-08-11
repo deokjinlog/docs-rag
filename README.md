@@ -59,6 +59,9 @@ curl -X POST localhost:8002/api/v1/docs-rag/documents \
 curl -X POST localhost:8002/api/v1/docs-rag/answer \
   -H 'Content-Type: application/json' \
   -d '{"query":"무면허운전 시 보험금 지급이 되나요?","service_code":"01"}'
+
+# 4. 검색 품질 골든 채점 (recall@k·MRR, 스택 필요 — 검색≠생성 분리 진단)
+make eval-retrieval   # baseline 대비 회귀 시 exit 1
 ```
 
 구성·포트는 [architecture.md](docs/architecture.md), 명령 alias는 [Makefile](Makefile) 참조.
@@ -109,13 +112,15 @@ flowchart LR
 
 측정 수치를 자랑하기보다, **측정이 스스로 개선을 구동하는 루프**를 설계했다. 정답 근거가 달린 gold set을 만들고 아래 지표로 잰다 (judge는 serving 모델과 분리해 self-preference bias 회피).
 
-| 축 | 지표 |
-|---|---|
-| 생성 품질 | RAGAS Faithfulness · Answer Relevancy · Context Utilization |
-| 검색 품질 | Recall@k · MRR · nDCG (gold chunk 라벨) |
-| 라우팅 (참고) | query_type 분포 · 오분류 spot-check |
+| 축 | 지표 | 상태 |
+|---|---|---|
+| 생성 품질 | RAGAS Faithfulness · Answer Relevancy · Context Utilization | `eval_ragas.py` |
+| 검색 품질 | Recall@k · MRR (원문 앵커 라벨, 재청킹 무관) | `eval_retrieval.py` — recall@3/5=1.00·MRR=0.92 (12문항, 수정 후) |
+| 라우팅 (참고) | query_type 분포 · 오분류 spot-check | trace 집계 |
 
 > 라우팅은 *"유형이 라벨과 맞나"*(주관 라벨 대비라 객관 정답률이 아님)보다 *"라우팅이 실제로 품질을 올리나"*가 본질이고, 후자는 아직 미검증이다 — [설계 회고](docs/design-retrospective.md) 참조.
+
+> **검색 골든이 병목을 특정하고 → 측정이 수정을 검증한다** — 첫 측정에서 *"해지된 특약을 다시 살릴 수 있나요?"*(제18조)가 7위. distractor 분석으로 원인을 ①목차/요약 경쟁 ②청킹 heading 결함 ③리랭커 어휘갭으로 분리 → 청커 heading 복구 + **리랭커 입력을 임베딩과 동일하게(heading+content)** 맞춰 `recall@1 0.58→0.83·MRR 0.75→0.92`(부활 7→2위). "청킹만 고쳤을 땐 안 움직였다"는 측정이 진짜 레버(리랭커 입력)를 가리킨 사례. [eval-and-golden.md §9](docs/eval-and-golden.md).
 
 **측정 → 병목 진단(검색이면 청킹·리랭크 / 생성이면 프롬프트·파인튜닝) → 재측정.** 실측 기록은 [설계 회고](docs/design-retrospective.md), 실행 계획은 [로드맵](docs/roadmap.md).
 

@@ -51,6 +51,7 @@ uv run pytest tests/ -v                                              # rag + gua
 docker compose exec api uv run pytest tests/ -v -m integration       # critic E2E (mocked LLM/Qdrant, docker 안)
 
 # 평가·관측 (Tier 1 일상용)
+python3 scripts/eval_retrieval.py         # 검색 골든 recall@k·MRR (스택 필요, baseline 회귀 시 exit 1) — make eval-retrieval
 uv run python scripts/smoke_test.py       # 10 DoD 자동 검증 (critic 필드 포함)
 uv run python scripts/trace_summary.py                 # 서빙 trace 12-섹션 집계 (critic + input_guard 포함)
 uv run python scripts/trace_summary.py --feedback      # 위 + Feedback DB 7일 JOIN 섹션 추가
@@ -142,6 +143,8 @@ RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로
 - **Celery 체인**: `prev_result = {"service_code", "document_id", "document_name"}` 고정
 - **BM25 이름**: `content-bm25`가 `qdrant.py`/`embed.py`/`router.py` 세 곳. 변경 시 컬렉션 재생성
 - **벡터 1024차원**: `qdrant.py` + BGE-M3. 모델 변경 시 반드시 일치 확인
+- **리랭커 입력 = 임베딩 텍스트 일관성**: 덴스 벡터는 `heading_path + content`로 임베딩(`embed.py` `_embed_text`)하는데 리랭커도 같은 포맷이어야 한다(`search.py` `_rerank_text`). 리랭커만 content-only면 heading 신호(조 제목=도메인 어휘)가 최종 순위에 안 실림 — 실측: 청킹 heading 복구 후에도 recall이 안 움직인 원인이 이 불일치였고, 맞추자 recall@1 0.58→0.83·MRR 0.75→0.92(검색 골든 §9). 한쪽 포맷을 바꾸면 다른 쪽도 같이.
+- **청킹 heading 품질 ↔ 검색**: ODL이 조 제목을 heading(`##`)이 아니라 `-` 리스트/문장꼬리 H6로 뱉는 문서가 있음. `chunker_adaptive._repair_markdown_headings`가 청킹 전에 조 제목 승격·문장꼬리 강등·점선 TOC 제거로 보정 — heading_path가 임베딩·리랭커·sibling 복원의 공통 신호라 여기가 깨지면 검색까지 전파. 청커 수정은 재청킹(chunk→embed 재실행)해야 색인에 반영됨.
 - **Qdrant point ID 타입**: Qdrant가 unsigned integer 또는 UUID만 허용 — string ID는 거절. `embed.py` `PointStruct(id=int)` + `tb_document_contents.qdrant_point_id` BIGINT + `repository.get_by_qdrant_id(int)` 셋이 모두 정수로 일관. chunks.id (BIGSERIAL) 그대로 사용. 이 정책 깨면 검색 → DB lookup 시 silent mismatch 발생
 - **페이지 마커**: `<!-- page:N -->`가 `extract.py`/`preprocess.py`/`odl/server.py` 세 곳
 - **ODL 2프로세스**: `odl/Dockerfile` CMD에서 docling-fast(:5010) + FastAPI 래퍼(:5002) 동시 실행. `extract.py`의 `hybrid_url`과 포트 일치 필수

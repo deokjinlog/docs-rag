@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval feedback-submit trace trace-feedback smoke eval-ocr eval-index
+        eval eval-retrieval feedback-submit trace trace-feedback smoke eval-ocr eval-index
 
 
 # ─── Local Dev (host에서 직접 띄울 때, docker 미사용) ─────────────────────
@@ -45,6 +45,9 @@ check: ## 관계형 추출 자립 골든 9종 + 전처리 게이트 (배포 관�
 
 eval: ## RAGAS Triad 평가 (Judge=GPT-4o-mini 권장 — OPENAI_API_KEY env 필요. --basic 플래그는 직접 호출)
 	uv run python scripts/eval_ragas.py
+
+eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve 호출. --update-baseline로 기준선 고정)
+	python3 scripts/eval_retrieval.py
 
 feedback-submit: ## (producer, eval_ragas.py --submit-feedback) RAGAS Faithfulness → signal 매핑·DB 적재
 	uv run python scripts/eval_ragas.py --submit-feedback
