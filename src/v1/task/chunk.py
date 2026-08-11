@@ -5,6 +5,7 @@
 """
 
 import os
+import re
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -50,6 +51,23 @@ def _merge_ocr_chunks(text_chunks: list[dict], ocr_chunks: list[dict]) -> list[d
         result.insert(insert_pos, ocr)
 
     return result
+
+
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+
+
+def _strip_media_noise(chunks: list[dict]) -> list[dict]:
+    """모든 청크(text + OCR image/table) content의 <br>를 공백으로 — 임베딩 노이즈 제거.
+    텍스트 청크는 청커(_repair_markdown_headings)에서 이미 처리되지만 OCR 표 청크는 그
+    경로를 안 거치고(celery ocr.py 생성) 셀 줄바꿈이 <br>로 남으므로, 전 청크가 합류한
+    이 수렴점에서 통일한다. 표 구조 파이프(|)는 보존, <br>만 제거."""
+    for c in chunks:
+        cont = c.get("content")
+        if cont and "<br" in cont.lower():
+            cont = _BR_RE.sub(" ", cont)
+            cont = re.sub(r" {2,}", " ", cont)
+            c["content"] = cont
+    return chunks
 
 
 def _reassign_part_indices(chunks: list[dict]) -> list[dict]:
@@ -162,6 +180,7 @@ def chunk_document(self, prev_result: dict):
             text_chunks = _build_text_chunks(chunk_dicts, service_code, document_id)
 
             all_chunks = _merge_ocr_chunks(text_chunks, existing_ocr)
+            all_chunks = _strip_media_noise(all_chunks)   # <br> 등 미디어 노이즈 통일 제거(OCR 표 포함)
             all_chunks = _reassign_part_indices(all_chunks)
             for i, chunk in enumerate(all_chunks, 1):
                 chunk["seq"] = i

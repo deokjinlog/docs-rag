@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval feedback-submit trace trace-feedback smoke eval-ocr eval-index \
+        eval eval-retrieval chunk-quality feedback-submit trace trace-feedback smoke eval-ocr eval-index \
         mem watch recover lite ingest answer full
 
 
@@ -49,6 +49,9 @@ eval: ## RAGAS Triad 평가 (Judge=GPT-4o-mini 권장 — OPENAI_API_KEY env 필
 
 eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve 호출. --update-baseline로 기준선 고정)
 	python3 scripts/eval_retrieval.py
+
+chunk-quality: ## RAG 청크 전처리 완성도 게이트 (br·img·page·점선·고아heading·커버리지, 스택 불필요)
+	python3 scripts/eval_chunk_quality.py
 
 feedback-submit: ## (producer, eval_ragas.py --submit-feedback) RAGAS Faithfulness → signal 매핑·DB 적재
 	uv run python scripts/eval_ragas.py --submit-feedback
