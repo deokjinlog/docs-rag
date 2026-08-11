@@ -79,11 +79,26 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 	docker compose down && docker compose up -d
 	@echo "→ vLLM 재로드 1~2분 대기 후 /answer 가능 (make mem 으로 메모리 확인)"
 
-lite: ## 경량 모드 — on-demand 서비스(vLLM·paddle·odl) 중지, ~5GB 확보. 다른 작업(Ralph 등)과 공존용. 검색/관계형/eval은 그대로 됨(/answer·색인만 불가)
+# 모드별 메모리 발자국 (실측, 로컬 15GB WSL 기준) — 필요한 것만 켜서 다른 작업(Ralph)과 공존:
+#   lite   ~2.0GB  검색/관계형/eval        (vllm·paddle·odl OFF)
+#   ingest ~3.7GB  색인 파이프라인          (paddle·odl ON, vllm OFF — 파이프라인은 LLM 불필요)
+#   answer ~4.5GB  /answer 답변생성         (vllm ON, paddle·odl OFF)
+#   full   ~6.2GB  색인 + /answer 동시      (전부 ON — Ralph 공존 빠듯)
+
+lite: ## 경량(~2GB) — vLLM·paddle·odl 중지. 검색/관계형/make check/eval + Ralph 공존
 	docker compose stop vllm paddle odl
-	@echo "→ 검색·관계형·make check·make eval-retrieval 가능. /answer·색인 필요하면 make full"
 	@$(MAKE) --no-print-directory mem
 
-full: ## 전체 모드 — 색인·/answer 위해 vLLM·paddle·odl 복귀 (vLLM 재로드 1~2분)
-	docker compose start vllm paddle odl || docker compose up -d vllm paddle odl
+ingest: ## 색인용(~3.7GB) — paddle·odl 켜고 vLLM은 끔(파이프라인은 LLM 불필요). Ralph 공존 가능
+	docker compose start paddle odl 2>/dev/null || docker compose up -d paddle odl
+	docker compose stop vllm 2>/dev/null || true
+	@echo "→ extract→ocr→chunk→embed 파이프라인 가능. 끝나면 make lite로 반납"
+
+answer: ## /answer용(~4.5GB) — vLLM 켜고 paddle·odl은 끔 (vLLM 재로드 1~2분)
+	docker compose start vllm 2>/dev/null || docker compose up -d vllm
+	docker compose stop paddle odl 2>/dev/null || true
+	@echo "→ vLLM 재로드 1~2분 후 /answer 가능"
+
+full: ## 전체(~6.2GB) — 색인+/answer 동시 (Ralph 공존 빠듯)
+	docker compose start vllm paddle odl 2>/dev/null || docker compose up -d vllm paddle odl
 	@echo "→ vLLM 재로드 1~2분 후 /answer 가능"
