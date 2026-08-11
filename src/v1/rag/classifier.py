@@ -64,11 +64,20 @@ _STRUCTURED_REF_PATTERN = re.compile(f"{_KOREAN_STRUCT_REF}|{_DOC_REF}")
 # --- 절차·방법 질의 패턴 (PROCEDURE 대상, DENSE HEAVY) ---
 # "어떻게", "방법", "단계", "순서"처럼 수행 절차를 묻는 질의는
 # 정확한 토큰 일치보다 의미 기반 검색이 유리하다.
-_PROCEDURE_PATTERN = re.compile(
-    r"어떻게|방법|절차|신청|청구|접수|제출|가입"
+# 강한 절차 신호 — 명시적 프로세스 어휘. 해석 신호와 무관하게 PROCEDURE.
+_PROCEDURE_STRONG = re.compile(
+    r"방법|절차|신청|청구|접수|제출"
     r"|하려면|하려고|해야\s*하나|순서|과정|단계"
     r"|how\s+to|steps?|process|procedure"
 )
+# 약한 절차 신호 — 문맥 의존. 아래 해석 우선 신호가 함께 있으면 PROCEDURE로 보지 않는다.
+# 예) "어떻게 정의되나요"·"가입 후 지급되나요"는 절차가 아니라 해석(정의/값 설명).
+_PROCEDURE_WEAK = re.compile(r"어떻게|가입")
+# 해석 우선 신호 — 약한 절차 신호(어떻게·가입)를 이긴다. 정의/계산/의미 또는 yes-no 의문.
+_INTERP_PRIORITY = re.compile(r"정의|계산|산정|산출|의미|뜻|해석|되나요|수\s*있나")
+
+# 하위호환 별칭(외부 참조·문서용) — strong·weak 합집합.
+_PROCEDURE_PATTERN = re.compile(_PROCEDURE_STRONG.pattern + r"|어떻게|가입")
 
 # --- 비교 질의 패턴 (COMPARISON 대상, DENSE HEAVY) ---
 # 둘 이상을 비교하는 질의. 하이브리드 검색(DENSE_HEAVY)으로 넓게 모으고 비교 프롬프트로
@@ -85,9 +94,10 @@ _COMPARISON_PATTERN = re.compile(
 
 # [BASE] 한국어 일반 해석·적용 판단 어휘
 _INTERPRETATION_BASE = (
-    r"해석|의미|뜻|판단|적용|해당|간주|해석상"
+    r"해석|의미|뜻|정의|판단|적용|해당|간주|해석상"
+    r"|계산|산정|산출"                              # 값 산정 설명 = 해석 (절차 아님)
     r"|경우에|경우는|때는|하면"
-    r"|되나요|가능한가요|가능합니까|할\s*수\s*있나"
+    r"|되나요|가능한가요|가능합니까|수\s*있나"       # yes/no 의문 — '할' 외 동사도(살릴/받을 수 있나)
     r"|허용되나|인정되나|포함되나|대상인가"
     r"|what\s+does|mean|apply|eligible|qualify"
 )
@@ -108,7 +118,11 @@ _INTERPRETATION_PATTERN = re.compile(
 def classify_query(query: str) -> RouteResult:
     """쿼리를 분석해서 검색 전략과 질의 유형을 결정한다."""
     has_structured_ref = bool(_STRUCTURED_REF_PATTERN.search(query))
-    has_procedure      = bool(_PROCEDURE_PATTERN.search(query))
+    # 절차 = 강한 신호 or (약한 신호 & 해석 우선 신호 없음). "어떻게 정의되나요"·"가입 후
+    # 지급되나요"처럼 약한 절차 신호에 해석 신호가 붙으면 PROCEDURE로 오분류하지 않는다.
+    _interp_priority   = bool(_INTERP_PRIORITY.search(query))
+    has_procedure      = bool(_PROCEDURE_STRONG.search(query)) or \
+                         (bool(_PROCEDURE_WEAK.search(query)) and not _interp_priority)
     has_comparison     = bool(_COMPARISON_PATTERN.search(query))
     has_interpretation = bool(_INTERPRETATION_PATTERN.search(query))
 

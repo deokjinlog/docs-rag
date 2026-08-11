@@ -1,0 +1,16 @@
+{"query": "제21조 준용 규정 알려줘", "expected_type": "structured_lookup"}
+{"query": "별표1 보험금 지급기준표 보여줘", "expected_type": "structured_lookup"}
+{"query": "소득보장수술은 어떻게 정의되나요?", "expected_type": "interpretation"}
+{"query": "해약환급금은 어떻게 계산되나요?", "expected_type": "interpretation"}
+{"query": "중환자실은 어떻게 정의되나요?", "expected_type": "interpretation"}
+{"query": "해지된 특약을 다시 살릴 수 있나요?", "expected_type": "interpretation"}
+{"query": "무면허운전 시 보험금이 보장되나요?", "expected_type": "interpretation"}
+{"query": "가입 후 일정 기간 동안 보험금이 감액되어 지급되나요?", "expected_type": "interpretation"}
+{"query": "보험금 청구는 어떻게 하나요?", "expected_type": "procedure"}
+{"query": "계약을 해지하려면 어떻게 해야 하나요?", "expected_type": "procedure"}
+{"query": "보험금 청구 절차가 어떻게 되나요?", "expected_type": "procedure"}
+{"query": "소득보장수술 보험금 청구 시 필요한 서류를 제출하려면?", "expected_type": "procedure"}
+{"query": "1종과 2종의 차이는 뭔가요?", "expected_type": "comparison"}
+{"query": "상해입원과 질병입원의 차이는?", "expected_type": "comparison"}
+{"query": "간병인사용 입원급여금은 하루당 얼마인가요?", "expected_type": "simple_fact"}
+{"query": "1회 입원당 며칠까지 보장 한도인가요?", "expected_type": "simple_fact"}

@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval chunk-quality feedback-submit trace trace-feedback smoke eval-ocr eval-index \
+        eval eval-retrieval chunk-quality eval-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index \
         mem watch recover lite ingest answer full
 
 
@@ -52,6 +52,9 @@ eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve
 
 chunk-quality: ## RAG 청크 전처리 완성도 게이트 (br·img·page·점선·고아heading·커버리지, 스택 불필요)
 	python3 scripts/eval_chunk_quality.py
+
+eval-routing: ## 라우팅 골든 — 5-type 분류기 정확도 (순수 정규식, 스택 불필요. --update-baseline)
+	python3 scripts/eval_routing.py
 
 feedback-submit: ## (producer, eval_ragas.py --submit-feedback) RAGAS Faithfulness → signal 매핑·DB 적재
 	uv run python scripts/eval_ragas.py --submit-feedback
