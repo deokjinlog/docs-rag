@@ -7,7 +7,7 @@ export
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
         eval eval-retrieval feedback-submit trace trace-feedback smoke eval-ocr eval-index \
-        mem recover
+        mem watch recover lite ingest answer full
 
 
 # ─── Local Dev (host에서 직접 띄울 때, docker 미사용) ─────────────────────
@@ -71,9 +71,23 @@ eval-index: ## Qdrant 벡터 공간 헬스 (Dispersion + Confusion Rate)
 
 # ─── Infra / Health (로컬 8GB·WSL 안정성) ─────────────────────────────────
 
-mem: ## 컨테이너별 메모리 사용/상한 + WSL 스왑 (mem_limit 튜닝·api 누수 감시)
+mem: ## 컨테이너별 메모리 사용/상한 + WSL 스왑 (1회 스냅샷)
 	@docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}" | grep -E 'NAME|docs-rag'
 	@echo "── WSL ──"; free -h | awk 'NR<=3'
+
+watch: ## 메모리 실시간 모니터 (3초 갱신 + 경고). Ctrl+C로 종료
+	@while true; do \
+	  clear; \
+	  a=$$(free -m | awk 'NR==2{print $$7}'); sw=$$(free -m | awk 'NR==3{print $$3}'); \
+	  echo "═══ docs-rag 메모리 모니터  ($$(date +%H:%M:%S), Ctrl+C 종료) ═══"; \
+	  free -h | awk 'NR<=3'; \
+	  if [ $$a -lt 1500 ]; then echo "  🔴 위험: available $${a}MB (<1.5GB) — 곧 스왑/크래시. 세션 줄이거나 make lite"; \
+	  elif [ $$sw -gt 8000 ]; then echo "  🟡 주의: swap $${sw}MB — 압박 높음(느려질 수 있음)"; \
+	  else echo "  🟢 여유: available $${a}MB, swap $${sw}MB"; fi; \
+	  echo "── docs-rag 컨테이너 ──"; \
+	  docker stats --no-stream --format "  {{.Name}}  {{.MemUsage}}" 2>/dev/null | grep docs-rag; \
+	  sleep 3; \
+	done
 
 recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소실) 네트워크째 재생성
 	docker compose down && docker compose up -d

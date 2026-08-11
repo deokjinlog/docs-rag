@@ -28,6 +28,11 @@ _ARTICLE_PROMOTE_LEVEL = 5                                   # #####  (실제 �
 _LEADER_RE = re.compile(r'\.{4,}|·{5,}|…{3,}')               # 점선 목차 잔해(ASCII 마침표 포함 — normalize가 못 잡음)
 _FRAGMENT_TAIL_RE = re.compile(r'(?:다|요|음|함|됨|임)\s*[.。]$')  # 문장 종결 꼬리(heading 오검출 신호)
 _STRUCT_MARKER_RE = re.compile(r'제\s*\d+\s*[조관장절편]|별표|【')
+# 미디어 노이즈 — 임베딩 텍스트 오염. 이미지 OCR은 별도 image 청크로 처리되므로 텍스트 청크의
+# 마크다운 이미지 태그는 순수 잔해. ODL이 `![](<경로>)` 형식으로 뱉어 OCR 태스크의 `![image N]`
+# 정규식을 빠져나가 청크에 남던 것을 청킹 진입 시 제거. <br>도 공백으로.
+_IMG_TAG_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
+_BR_RE = re.compile(r'<br\s*/?>', re.IGNORECASE)
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +41,8 @@ def _repair_markdown_headings(text: str) -> str:
     """조 제목(리스트/평문) → heading 승격 · 문장꼬리 heading → 본문 강등 · 점선 목차줄 제거.
     ODL이 조 제목을 heading으로 뱉지 않는 문서에서 조 단위 grouping을 복구한다(precision-first:
     구조가 뚜렷한 조 제목·명백한 문장꼬리만 건드리고, 애매하면 원본 유지)."""
+    text = _IMG_TAG_RE.sub('', text)      # 이미지 태그 잔해 제거(OCR은 별도 image 청크로 이미 처리됨)
+    text = _BR_RE.sub(' ', text)          # <br> → 공백
     out: list[str] = []
     for line in text.split('\n'):
         s = line.strip()
