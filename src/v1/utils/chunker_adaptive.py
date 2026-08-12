@@ -92,10 +92,16 @@ class Chunk:
 
 # 유틸
 def _heading_chain(node: MdNode) -> list[str]:
+    # TOC 노드(목차·차례)는 조상 경로에서 제외한다. ODL이 "목차"를 얕은 레벨로 뱉으면
+    # 실제 약관 본문(제N조)이 그 자식으로 잘못 중첩돼, 거의 전 청크의 heading_path가
+    # "…> 목차 >…"가 된다(실측 R01·R02·R04 98~100%). heading_path는 임베딩·리랭커에
+    # 함께 실리므로 균일한 "목차" 토큰이 전 벡터를 희석 — 조상 경로에서만 걷어낸다
+    # (트리·content·chunk는 불변, 순수 경로 정제).
     chain = []
     cur = node
     while cur and cur.level > 0:
-        chain.append(cur.heading)
+        if not _is_toc_heading(cur.heading):
+            chain.append(cur.heading)
         cur = cur.parent
     chain.reverse()
     return chain

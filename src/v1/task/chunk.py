@@ -15,6 +15,7 @@ from celery_app import celery_app
 from ..config import OUTPUT_RAW_DIR, OUTPUT_PROCESSED_DIR, StatusCode, task_session
 from ..repository import DocumentRepository, ExtractRepository, ChunkRepository, ContentsRepository
 from ..utils.chunker import chunk_markdown, to_json
+from ..utils.chunker_adaptive import _is_toc_heading  # OCR 청크 heading_path도 동일 TOC 규칙으로
 
 CHUNKER_TYPE = os.environ["CHUNKER_TYPE"]
 from ..logger import celery_logger as logger
@@ -108,21 +109,42 @@ def _preserve_existing_ocr(
     service_code: str,
     document_id: str,
 ) -> list[dict]:
-    """기존 청크/콘텐츠 삭제 전, OCR이 만든 image+table 청크를 보존.
+    """기존 청크/콘텐츠 삭제 전, OCR(paddle)이 만든 image/table 청크만 보존.
 
-    이걸 미리 떼놓지 않으면 재청킹 시 OCR 결과가 영구 손실됨.
-    image만 챙기면 같은 이미지에서 분리된 table 청크가 사라지므로 둘 다 보존.
+    재청킹은 markdown에서 text·**markdown-native 표**를 재생성하지만, paddle이 이미지에서
+    복원한 OCR 청크는 재생성 불가(paddle 미실행) → 영구 손실 방지로 보존한다.
+
+    **필터 주의(회귀 방지)**: chunk_type만 보면 markdown-native 표(chunk_type=table,
+    OCR 아님)까지 보존되는데, 이 표는 chunk_markdown이 매 재청킹마다 새로 만들므로 보존분과
+    합쳐져 **재색인마다 중복 누적**된다(실측 R04 24→28→32, +N/회). 진짜 OCR은 반드시
+    image_ocr_texts를 갖는다 → 이걸 보존 조건으로 삼아 markdown-native 표를 배제한다.
     """
     contents_repo.delete_by_document(service_code, document_id)
     existing_ocr = [
         c for c in chunk_repo.get_by_document(service_code, document_id)
-        if c.get("chunk_type") in ("image", "table")
+        if c.get("chunk_type") in ("image", "table") and c.get("image_ocr_texts")
     ]
     for ocr in existing_ocr:
         ocr["service_code"] = service_code
         ocr["document_id"] = document_id
     chunk_repo.delete_by_document(service_code, document_id)
-    return existing_ocr
+    return _strip_toc_from_heading_path(existing_ocr)
+
+
+def _strip_toc_from_heading_path(ocr_chunks: list[dict]) -> list[dict]:
+    """보존된 OCR 청크의 heading_path에서 TOC(목차) 조상 segment 제거.
+
+    OCR image/table 청크는 ocr.py가 만들어 chunker의 _heading_chain을 안 거치므로,
+    text 청크(목차 조상 제외)와 heading_path 규칙이 어긋난다. 여기서 같은 판정(_is_toc_heading)
+    으로 맞춰 임베딩·리랭커·sibling의 공통 신호를 일관되게 유지한다.
+    """
+    for c in ocr_chunks:
+        hp = c.get("heading_path")
+        if not hp or " > " not in hp:
+            continue
+        segs = [s for s in hp.split(" > ") if not _is_toc_heading(s)]
+        c["heading_path"] = " > ".join(segs) if segs else None
+    return ocr_chunks
 
 
 def _build_text_chunks(chunk_dicts: list[dict], service_code: str, document_id: str) -> list[dict]:
