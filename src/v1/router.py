@@ -347,9 +347,15 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
             answer_text, output_threats = sanitize_output(answer_text)
 
             # Chunk-level provenance: 리랭킹 결과의 chunk id/content를 verifier에 전달해 claim-근거 매핑 생성.
+            # heading_path를 content 앞에 포함 — 청크는 항 단위로 쪼개져 조 번호("제10조")가 본문이 아닌
+            # heading_path에만 있음. 이걸 빼면 verifier가 답변의 "제10조" 인용을 context에 없다고 오판(hard_fail).
             from .rag.grader import Chunk as VerifyChunk
             verify_chunks = [
-                VerifyChunk(id=str(r[0].id), content=(r[0].payload or {}).get("content", ""))
+                VerifyChunk(
+                    id=str(r[0].id),
+                    content=(f"{(r[0].payload or {}).get('heading_path', '')}\n"
+                             f"{(r[0].payload or {}).get('content', '')}").strip(),
+                )
                 for r in ranked
             ]
             with trace_span("verify"):

@@ -236,6 +236,32 @@ def test_verify_answer_hard_fail_when_ref_missing():
     assert "제99조" in result["missing_refs"]
 
 
+def test_verify_answer_article_level_match_when_paragraph_only_in_body():
+    """답변이 '제10조 제2항'을 인용하고 근거엔 '제10조'(heading)만, 항은 본문에 맨숫자('1'·'2')로
+    있을 때 — 조 단위로 매칭돼 grounded(pass)여야 한다. 항 입도로 대조하면 오탐(hard_fail)."""
+    from src.v1.rag.grader import verify_answer, Chunk
+    chunks = [Chunk(id="863", content="제10조 【보험금 등의 청구】\n1 다음 서류를 제출한다\n2 추가 증빙")]
+    answer = "제10조 제2항에 따라 입원간병인 사용확인서를 제출한다."
+    result = verify_answer(answer, context="", chunks=chunks)
+    assert result["risk_level"] == "pass"
+    assert result["missing_refs"] == []
+    # citation 매핑도 조 번호로 채워져야 함 (제10조 제2항 → 제10조 담은 863)
+    supported = {cid for c in result["claims"] for cid in c["supported_by_chunks"]}
+    assert "863" in supported
+
+
+def test_verify_answer_grounds_ref_from_sibling_context():
+    """인용 조가 top-k chunks엔 없고 sibling 확장 context에만 있어도 grounded — LLM이 실제 본
+    context가 근거 범위. chunks만 보면 오탐(hard_fail)."""
+    from src.v1.rag.grader import verify_answer, Chunk
+    chunks = [Chunk(id="863", content="제10조 【청구】 서류를 제출한다")]
+    answer = "제4조 제1항의 지급사유에 해당한다."
+    # 제4조는 chunks엔 없지만 context(sibling 확장)엔 있음
+    result = verify_answer(answer, context="제4조 【보험금 지급사유】 회사는 다음 사유에 보험금을 지급한다", chunks=chunks)
+    assert result["risk_level"] == "pass"
+    assert result["missing_refs"] == []
+
+
 def test_verify_answer_soft_fail_on_krw_mismatch():
     """답변이 context에 없는 금액을 언급하면 soft_fail."""
     from src.v1.rag.grader import verify_answer

@@ -545,24 +545,45 @@ def verify_answer(
         ctx_text = context or ""
         chunks = [Chunk(id="context", content=ctx_text)] if ctx_text else []
 
-    # 답변·context 양쪽에서 사실 추출
-    ctx_joined = "\n".join(c.content for c in chunks)
-    ans_articles_set = {r.canonical() for r in extract_article_refs(answer)}
+    # 근거 범위 = LLM이 실제로 조건화한 것. chunks(개별 청크 provenance용)에 더해
+    # sibling 확장된 context(LLM이 본 전체)까지 포함해야 한다 — 인용 조가 top-k 청크가 아닌
+    # 인접 sibling(예: 제4조)에서 왔을 때, chunks만 보면 "근거에 없음"으로 오판(hard_fail).
+    ctx_parts = [c.content for c in chunks]
+    if context:
+        ctx_parts.append(context)
+    ctx_joined = "\n".join(ctx_parts)
+
+    ans_articles = extract_article_refs(answer)
     ans_appendices_set = {r.canonical() for r in extract_appendix_refs(answer)}
     ans_numerics = extract_numeric_facts(answer)
-    ctx_articles_set = {r.canonical() for r in extract_article_refs(ctx_joined)}
+    ctx_articles = extract_article_refs(ctx_joined)
     ctx_appendices_set = {r.canonical() for r in extract_appendix_refs(ctx_joined)}
     ctx_numerics_set = {n.canonical() for n in extract_numeric_facts(ctx_joined)}
 
-    # 답변에만 있는 참조 — hallucination 후보
-    missing_articles = sorted(ans_articles_set - ctx_articles_set)
+    # 조(條) 단위 매칭 — 항/호/목 입도로 대조하면 오탐이 폭발한다. context 본문의 항은
+    # "1"·"2" 맨숫자로 쓰여 "제N항"으로 추출되지 않는데(heading_path도 조까지만 표기),
+    # LLM 답변은 "제10조 제2항"으로 격식화한다. 조가 근거에 있으면 그 조 청크 안에 항 세부가
+    # 담기므로 조 존재만 확인한다 — pipeline.md §4 "검증기 정밀화 = 조 단위". 수치 오류는
+    # numeric_mismatches가 별도로 잡으므로 실질 검증력은 유지된다.
+    ctx_article_nums = {r.article for r in ctx_articles}
+    missing_articles = sorted(
+        {r.canonical() for r in ans_articles if r.article not in ctx_article_nums}
+    )
     missing_appendices = sorted(ans_appendices_set - ctx_appendices_set)
     numeric_mismatches = [n for n in ans_numerics if n.canonical() not in ctx_numerics_set]
 
-    # 근거 chunk 매핑 — 답변·context에 모두 있는 참조에 대해
-    article_provenance = _provenance_map(
-        ans_articles_set & ctx_articles_set, chunks, extract_article_refs
-    )
+    # 근거 chunk 매핑 — 조가 근거에 있는 답변 참조를, 그 조를 담은 chunk에 조 번호로 매핑
+    # (항 입도 무시, 위와 동일 사유. "제10조 제2항" → 제10조를 담은 chunk의 id).
+    article_provenance: dict[str, list[str]] = {}
+    for r in ans_articles:
+        if r.article not in ctx_article_nums:
+            continue
+        ids = [
+            c.id for c in chunks
+            if r.article in {cr.article for cr in extract_article_refs(c.content)}
+        ]
+        if ids:
+            article_provenance[r.canonical()] = ids
     appendix_provenance = _provenance_map(
         ans_appendices_set & ctx_appendices_set, chunks, extract_appendix_refs
     )
