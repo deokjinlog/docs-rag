@@ -48,6 +48,9 @@ def _mock_ranked_chunk(chunk_id: str, content: str, score: float = 0.85):
 # api.py 가 import한 `v1.router` 와 같은 module instance여야 mock이 적중함.
 
 
+# Critic은 기본 꺼짐(CRITIC_DISPATCH_ENABLED=false, design-retrospective §1.5) — 이 테스트들은
+# critic '배선'(켰을 때 정확히 발동/분기하는지)을 검증하므로 flag를 켠다.
+@patch("v1.router.CRITIC_DISPATCH_ENABLED", True)
 @patch("v1.router.expand_siblings")
 @patch("v1.router.search_and_rerank")
 @patch("v1.router.invoke_clean")
@@ -88,6 +91,7 @@ def test_answer_endpoint_triggers_regenerate_on_generation_error(
         assert data["verification"].get("escalation_required") is not True
 
 
+@patch("v1.router.CRITIC_DISPATCH_ENABLED", True)
 @patch("v1.router.expand_siblings")
 @patch("v1.router.search_and_rerank")
 @patch("v1.router.invoke_clean")
