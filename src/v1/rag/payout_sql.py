@@ -122,3 +122,28 @@ def format_payout(r: dict | None) -> str:
         cond = " ".join(x for x in (r.get("reduction_period"), r.get("reduction_cause")) if x)
         parts.append(f"※{cond + ' 시' if cond else ''} {r['reduction_rate_pct']}% 감액".strip())
     return " ".join(parts)
+
+
+def format_exclusion_note(exclusions: list[dict]) -> str:
+    """면책(지급 제외) 강제첨부 — "얼마?" 답에 항상 붙인다(지급률만 답하고 면책 빠뜨리면
+    소비자 손해, domain-model.md). exclusions=general 면책 조 [{jo, title}]. 없으면 "".
+
+    조 참조만 노출(사유 상세는 해당 조 본문·RAG 소관). 확정 안내가 아니라 "확인 필요" 톤 —
+    corpus에 부모 보통약관 공통면책이 없을 수 있어 없는 걸 안전하다 단정하지 않는다.
+    """
+    if not exclusions:
+        return ""
+    refs = " · ".join(
+        f"제{e['jo']}조({e['title']})" if e.get("title") else f"제{e['jo']}조"
+        for e in exclusions if e.get("jo")
+    )
+    return f"※ 지급 제외(면책) 확인 필요: {refs}" if refs else ""
+
+
+def format_payout_complete(rule: dict | None, exclusions: list[dict] | None = None) -> str:
+    """완결 답변 = 지급값 + 면책 강제첨부. rule None이면 RAG 폴백 신호 그대로."""
+    base = format_payout(rule)
+    if rule is None:
+        return base
+    note = format_exclusion_note(exclusions or [])
+    return f"{base}  {note}" if note else base

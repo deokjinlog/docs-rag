@@ -298,12 +298,13 @@ Base URL: `/api/v1/docs-rag`
   "query": "중환자실 입원하면 하루 얼마 받아요?",
   "route": "sql",
   "matched": true,
-  "answer": "중환자실 입원급여금 → 가입금액의 1일당 1% (한도 10일) ※1년이내 재해외 시 50% 감액",
+  "answer": "중환자실 입원급여금 → 가입금액의 1일당 1% (한도 10일) ※1년이내 재해외 시 50% 감액  ※ 지급 제외(면책) 확인 필요: 제7조(보험금을 지급하지 않는 사유)",
   "rule": {
     "product_id": "LINA_ICU_2024", "coverage": "중환자실 입원급여금",
     "rate_pct": 1, "per_unit": "1일당", "limit_days": 10,
     "reduction_rate_pct": 50, "reduction_period": "1년이내", "reduction_cause": "재해외"
-  }
+  },
+  "exclusions": [{"jo": 7, "title": "보험금을 지급하지 않는 사유"}]
 }
 ```
 
@@ -311,8 +312,9 @@ Base URL: `/api/v1/docs-rag`
 |------|------|------|
 | route | 항상 | `"sql"` — 3경로 라우터의 SQL 경로 표식 |
 | matched | 항상 | 결정론 답을 냈나. `false`면 RAG(`/answer`)로 폴백하라는 신호 |
-| answer | 항상 | 결정론 답변 한 줄. `matched=false`면 `"관련 지급규칙을 찾지 못했습니다(→RAG)."` |
+| answer | 항상 | 결정론 답변 한 줄 + **면책 강제첨부**("얼마?"에 지급 제외를 항상 붙임 — 지급률만 답하면 소비자 손해). `matched=false`면 `"관련 지급규칙을 찾지 못했습니다(→RAG)."` |
 | rule | matched=true일 때만 | 근거 `payout_rule` row (coverage·rate_pct·한도·감액). miss면 `null` |
+| exclusions | matched=true일 때만 | 강제첨부된 상품 general 면책 조 `[{jo, title}]`(kind='general', `coverage_exclusion_map ⋈ clause`). 감액(reduction)은 answer의 payout에 이미 포함 |
 
 ### 에러
 

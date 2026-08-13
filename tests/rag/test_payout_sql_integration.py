@@ -75,6 +75,8 @@ def test_payout_endpoint_deterministic_hit():
         pytest.skip("payout_rule 미적재 — load_payout.py --load 필요")
     assert d["route"] == "sql"
     assert d["rule"]["rate_pct"] == 1 and "1%" in d["answer"]
+    # 완결성: 면책 강제첨부 (지급률만 답하면 안 됨)
+    assert "면책" in d["answer"] and d.get("exclusions")
 
 
 @pytest.mark.integration
@@ -120,6 +122,7 @@ def test_answer_routes_amount_query_to_sql_no_llm():
     if d["route"]["strategy"] != "sql":
         pytest.skip("payout_rule 미적재 — SQL 라우팅 안 됨")
     assert "1%" in d["answer"] and mock_invoke.call_count == 0  # 결정론 = LLM 미호출
+    assert "면책" in d["answer"]  # 완결성: SQL 답에도 면책 강제첨부
 
 
 @pytest.mark.integration

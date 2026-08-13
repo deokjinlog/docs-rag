@@ -7,6 +7,7 @@ payout_rule row 픽스처를 주입해 extract_payout_intent + select_payout + f
 
 from src.v1.rag.payout_sql import (
     extract_payout_intent, select_payout, format_payout, is_payout_amount_query,
+    format_exclusion_note, format_payout_complete,
 )
 
 
@@ -97,3 +98,29 @@ def test_amount_gate_excludes_interpretation_queries():
         "소득보장수술은 무엇을 참조해 지급되나요?",   # 지급 근거(해석)
     ]:
         assert not is_payout_amount_query(q), f"해석 질의가 SQL로 샘: {q}"
+
+
+# ── 면책 강제첨부 — "얼마?" 답에 지급 제외(면책) 항상 붙임(완결성) ──────────
+def test_exclusion_note_attaches_clause_refs():
+    note = format_exclusion_note([{"jo": 7, "title": "보험금을 지급하지 않는 사유"}])
+    assert "면책" in note and "제7조" in note
+
+
+def test_exclusion_note_empty_when_no_exclusions():
+    assert format_exclusion_note([]) == ""
+
+
+def test_payout_complete_combines_rate_and_exclusion():
+    """완결 답 = 지급률 + 면책 강제첨부 한 줄."""
+    rule = select_payout(_ROWS, "중환자실 하루 얼마?")
+    out = format_payout_complete(rule, [{"jo": 7, "title": "보험금을 지급하지 않는 사유"}])
+    assert "1%" in out and "면책" in out and "제7조" in out
+
+
+def test_payout_complete_no_exclusion_is_bare_payout():
+    rule = select_payout(_ROWS, "중환자실 하루 얼마?")
+    assert format_payout_complete(rule, []) == format_payout(rule)
+
+
+def test_payout_complete_miss_returns_rag_signal():
+    assert "→RAG" in format_payout_complete(None, [])

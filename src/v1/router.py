@@ -37,7 +37,7 @@ from .rag.search import (
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
 from .repository import DocumentRepository, FeedbackRepository, PayoutRepository
-from .rag.payout_sql import select_payout, format_payout, is_payout_amount_query
+from .rag.payout_sql import select_payout, format_payout_complete, is_payout_amount_query
 from .schemas import (
     AnswerRequest,
     DocumentCreate,
@@ -266,19 +266,23 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # amount 게이트(지급액 질의만) + select_payout hit 둘 다여야 발동, 아니면 RAG 그대로
             # (담보만 겹치는 해석 질의는 게이트가, 담보/규칙 미매칭은 hit=None이 막는 2중 안전).
             if SQL_ROUTE_ENABLED and is_payout_amount_query(body.query):
-                _rule = select_payout(PayoutRepository(db).get_rules(), body.query)
+                _repo = PayoutRepository(db)
+                _rule = select_payout(_repo.get_rules(), body.query)
                 if _rule is not None:
+                    # 면책 강제첨부 — "얼마?" 답에 지급 제외(면책)를 항상 붙인다(완결성).
+                    _excl = _repo.get_exclusions(_rule["product_id"], _rule.get("coverage"))
+                    _answer = format_payout_complete(_rule, _excl)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로 적중: {_rule.get('coverage')} → {_rule.get('rate_pct')}%")
                     return {
                         "trace_id": rec.trace_id,
                         "query": body.query,
-                        "answer": format_payout(_rule),
+                        "answer": _answer,
                         "elapsed_ms": int((time.time() - t0) * 1000),
                         "sources": [],
                         "route": {"strategy": "sql", "query_type": route.query_type.value},
                         "citations": [{
-                            "claim": format_payout(_rule),
+                            "claim": _answer,
                             "refs": [r for r in (_rule.get("product_id"), _rule.get("coverage")) if r],
                             "supported_by_chunks": [],
                         }],
@@ -513,14 +517,17 @@ def payout(body: PayoutRequest, db: Session = Depends(get_db)):
     데이터는 `PayoutRepository`(payout_rule). 라우터 통합(질의 유형 감지 후 SQL/RAG 분기)은 후속.
     """
     _apply_input_guard(body)
-    rows = PayoutRepository(db).get_rules(body.product_id)
-    rule = select_payout(rows, body.query)
+    repo = PayoutRepository(db)
+    rule = select_payout(repo.get_rules(body.product_id), body.query)
+    # 면책 강제첨부 — 지급률만 답하고 면책 빠뜨리면 소비자 손해(완결성).
+    exclusions = repo.get_exclusions(rule["product_id"], rule.get("coverage")) if rule else []
     return {
         "query": body.query,
         "route": "sql",
         "matched": rule is not None,
-        "answer": format_payout(rule),
-        "rule": rule,   # 근거: 매칭된 payout_rule row (coverage·rate_pct·limit_days 등). miss면 null
+        "answer": format_payout_complete(rule, exclusions),
+        "rule": rule,           # 근거: 매칭된 payout_rule row. miss면 null
+        "exclusions": exclusions,  # 강제첨부된 면책 조 [{jo, title}]
     }
 
 

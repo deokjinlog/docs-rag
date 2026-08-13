@@ -370,3 +370,20 @@ class PayoutRepository:
                 d["rate_pct"] = int(d["rate_pct"])   # Decimal → int (골든 정수 비교 일관)
             out.append(d)
         return out
+
+    def get_exclusions(self, product_id: str, coverage_name: str | None = None) -> list[dict]:
+        """상품의 **general 면책 조**(지급하지 않는 사유) — 강제첨부용. kind='general'만
+        (reduction=감액은 payout_rule에 이미 포함). general 면책은 상품/특약 전체에 적용되므로
+        product_id로만 매칭(payout_rule.coverage와 exclusion_map.coverage_name 표기가 달라도
+        누락 안 되게 — 예: payout "12개월 소득보장 수술급여금" vs map "약정한 보험금"). clause
+        조인으로 조 번호·제목 반환. coverage_name은 API 호환용(현재 미사용).
+        """
+        from sqlalchemy import text
+        sql = (
+            "SELECT DISTINCT c.jo, c.title "
+            "FROM coverage_exclusion_map m JOIN clause c ON c.clause_id = m.exclusion_clause "
+            "WHERE m.product_id = :pid AND m.kind = 'general' "
+            "ORDER BY c.jo"
+        )
+        rows = self.db.execute(text(sql), {"pid": product_id}).mappings()
+        return [dict(r) for r in rows]
