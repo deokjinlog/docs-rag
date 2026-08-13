@@ -34,6 +34,15 @@ def test_extract_code_explicit_and_disease_map():
     assert extract_code("두통은 보장돼요?") is None         # 미매핑 → RAG
 
 
+def test_extract_code_expanded_disease_map():
+    """확장 병명맵 — 부위별 흔한 암 + 특정 병명이 일반 '암'보다 먼저 매칭."""
+    assert extract_code("갑상선암 보장되나요?") == "C73"
+    assert extract_code("전립선암은?") == "C61"
+    assert extract_code("림프종 보장?") == "C85"
+    assert extract_code("제자리암 보장돼요?") == "D05"      # '암'보다 먼저
+    assert extract_code("암은 보장되나요?") == "C50"        # 부위 미지정 일반암(폴백)
+
+
 def test_judge_covered():
     assert judge_coverage("C50", _RANGES, "암진단자금")["verdict"] == "보장"
     assert judge_coverage("C16", _RANGES, "암진단자금")["verdict"] == "보장"   # C15~C26
