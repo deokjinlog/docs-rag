@@ -6,7 +6,9 @@ ODL이 "목차"를 얕은 heading 레벨로 뱉으면 실제 약관 본문(제N�
 경로에서 걷어내는지 검증한다(트리·content는 불변).
 """
 
-from src.v1.utils.chunker_adaptive import chunk_markdown, _build_tree, _heading_chain
+from src.v1.utils.chunker_adaptive import (
+    chunk_markdown, _build_tree, _heading_chain, _repair_markdown_headings,
+)
 
 
 _MD = """# 무배당 THE 특약 (갱신형)
@@ -57,3 +59,36 @@ def test_real_article_content_indexed():
     joined = " ".join(c.content for c in chunks)
     assert "서류를 제출" in joined, "제10조 본문 유실"
     assert "지급절차를 진행" in joined, "제11조 본문 유실"
+
+
+# ── 소괄호 조 제목 승격 (다이렉트·New치아 표기) ─────────────────────────────
+# ODL이 조 제목을 `- 제N조(제목)` 리스트로 뱉는 문서(다이렉트)에서, 소괄호 표기가 승격 안 돼
+# 제6~9조 내용이 제5조로 붕괴하던 회귀. 【】(라이나)와 (…)(다이렉트) 둘 다 승격돼야 한다.
+_MD_PARENS = """##### 제5조(보험금을 지급하지 않는 사유)
+- 1 회사는 다음 사유로 보험금을 지급하지 않습니다.
+- 제6조(보험금 지급사유의 통지) 계약자는 지체없이 알려야 합니다.
+- 제7조(보험금의 청구)
+- 1 보험수익자는 서류를 제출하고 청구하여야 합니다.
+- 제8조(보험금의 지급절차)
+- ① 회사는 제7조(보험금의 청구)에서 정한 서류를 접수한 날부터 3영업일 이내에 지급합니다.
+"""
+
+
+def test_parens_article_titles_promoted_not_collapsed():
+    """`- 제N조(제목)` 소괄호 조 제목이 각각 heading으로 승격돼, 제7·8조 본문이 제5조로
+    붕괴하지 않아야 한다. 라이나 【】와 동일 취급."""
+    root = _build_tree(_repair_markdown_headings(_MD_PARENS))
+    for jo in ("제5조", "제6조", "제7조", "제8조"):
+        assert _find(root, jo) is not None, f"{jo}가 별도 heading으로 승격 안 됨(붕괴)"
+    # 제7조 청구 본문이 제7조 노드 아래에 있어야 함(제5조 아래 아님)
+    n7 = _find(root, "제7조")
+    assert "서류를 제출하고 청구" in n7.content, "제7조 본문이 제7조 노드에 없음(붕괴)"
+
+
+def test_article_reference_not_promoted():
+    """본문 참조 '제7조(보험금의 청구)에서 정한…'은 josa가 붙어 heading으로 오승격되면 안 됨."""
+    repaired = _repair_markdown_headings(
+        "- ① 회사는 제7조(보험금의 청구)에서 정한 서류를 접수한 날부터 지급합니다.\n"
+    )
+    # 참조 라인은 heading(#)으로 바뀌지 않아야 함
+    assert not repaired.strip().startswith("#"), f"참조가 heading으로 오승격: {repaired!r}"

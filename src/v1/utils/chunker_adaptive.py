@@ -23,7 +23,12 @@ _TABLE_SEPARATOR_RE = re.compile(r'^\|[\s\-:|]+\|$')
 # 소스를 고쳐야 조 단위 청킹·sibling 복원이 산다. 실측: 라이나 간병인 특약이 제13~15조를 리스트로,
 # 문장 꼬리 "기준으로 합니다."를 H6로 뱉어 갱신 조가 쓰레기 heading을 상속했다.
 _HEADING_LINE_RE = re.compile(r'^(#{1,6})\s+(.*)$')
-_ARTICLE_TITLE_RE = re.compile(r'^\s*[-*]?\s*(제\s*\d+\s*조(?:\s*의\s*\d+)?\s*【[^】]*】)\s*(.*)$')
+# 조 제목은 회사별로 【제목】(라이나) 또는 (제목)(다이렉트·New치아) 표기. 소괄호는 본문 참조
+# ("제3조(지급사유)에서 정한…")와 겹치므로, 닫는 괄호 뒤가 공백/줄끝일 때만 조 heading으로 승격
+# (참조는 josa "에서/의/를…"가 바로 붙어 배제됨). 각괄호는 명확해 그 가드 없이 매칭.
+_ARTICLE_TITLE_RE = re.compile(
+    r'^\s*[-*]?\s*(제\s*\d+\s*조(?:\s*의\s*\d+)?\s*(?:【[^】]*】|\([^)]*\)(?=\s|$)))\s*(.*)$'
+)
 _ARTICLE_PROMOTE_LEVEL = 5                                   # #####  (실제 조 heading과 동일 레벨)
 _LEADER_RE = re.compile(r'\.{4,}|·{5,}|…{3,}')               # 점선 목차 잔해(ASCII 마침표 포함 — normalize가 못 잡음)
 _FRAGMENT_TAIL_RE = re.compile(r'(?:다|요|음|함|됨|임)\s*[.。]$')  # 문장 종결 꼬리(heading 오검출 신호)
