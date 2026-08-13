@@ -364,7 +364,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                 _ep = ProductRepository(db).get_terms(coverage_kw=coverage_hint(body.query))
                 _excls = PayoutRepository(db).get_exclusions(_ep["product_id"]) if _ep else []
                 if _excls:
-                    _eanswer = format_exclusions(_excls)
+                    _eanswer = format_exclusions(_excls, _ep.get("resolution_note"))
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(exclusion) 적중: {_ep['product_id']}")
                     return {
@@ -667,16 +667,15 @@ def exclusion(body: ExclusionRequest, db: Session = Depends(get_db)):
     matched=false→RAG. 로직 `rag/exclusion_sql.py`.
     """
     _apply_input_guard(body)
-    pid = body.product_id
-    if not pid:
-        p = ProductRepository(db).get_terms(coverage_kw=coverage_hint(body.query))
-        pid = p["product_id"] if p else None
+    product = ProductRepository(db).get_terms(body.product_id, coverage_hint(body.query))
+    pid = product["product_id"] if product else None
     exclusions = PayoutRepository(db).get_exclusions(pid) if pid else []
+    resolution = product.get("resolution_note") if product else None
     return {
         "query": body.query,
         "route": "sql",
-        "matched": bool(exclusions),
-        "answer": format_exclusions(exclusions),
+        "matched": bool(exclusions) or bool(resolution and "준용" in resolution),
+        "answer": format_exclusions(exclusions, resolution),   # 사유 + 준용 완결성
         "exclusions": exclusions,   # 근거 면책 조 [{jo, title, body}]
     }
 

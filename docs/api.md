@@ -401,7 +401,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ## 8. POST /exclusion
 
-**결정론 면책 상세 경로** — "뭐가 면책이야?(지급 안 되는 사유)"를 면책 조에서 실제 사유(고의·전쟁내란·위험활동 등)로 나열. payout의 **강제첨부**(모든 지급 답에 항상 붙임)와 달리, 면책만 묻는 **단독 질의**의 결정론 답. 상품은 담보 키워드로 해소(`product_id` 직접 지정도 가능) — 못 짚으면 `matched=false`→RAG. "확인 필요" 톤(부모 보통약관 공통면책 미확보 가능, precision-first). 로직 [`rag/exclusion_sql.py`](../src/v1/rag/exclusion_sql.py), 데이터 `coverage_exclusion_map ⋈ clause`.
+**결정론 면책 상세 경로** — "뭐가 면책이야?(지급 안 되는 사유)"를 면책 조에서 실제 사유(고의·전쟁내란·위험활동 등)로 나열. payout의 **강제첨부**(모든 지급 답에 항상 붙임)와 달리, 면책만 묻는 **단독 질의**의 결정론 답. **준용 완결성**: 특약은 고유 면책(고의)만 자체 보유하고 공통면책(전쟁·임신·위험활동)은 주계약 준용 소관 — 주계약 미확보면 *"공통면책은 제19조 준용 소관, 미확보로 확인 필요"*를 붙여 **완결(빠짐 없음)·정직(없는 걸 안전하다 안 함)**. 복합약관(자체 완비)은 준용 노트 없음. 상품은 담보 키워드로 해소(`product_id`도 가능) — 못 짚으면 `matched=false`→RAG. 로직 [`rag/exclusion_sql.py`](../src/v1/rag/exclusion_sql.py).
 
 ### Request
 
@@ -416,7 +416,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
   "query": "중환자실 특약은 뭐가 면책인가요?",
   "route": "sql",
   "matched": true,
-  "answer": "지급 제외(면책) 사유: 고의 등 (제7조) — 상세는 해당 조 확인 필요",
+  "answer": "지급 제외(면책) 사유: 고의 등 (제7조) — 상세는 해당 조 확인 필요  ※ 공통면책(전쟁·임신·위험활동 등)은 제19조 준용 소관 — 주계약 미확보로 확인 필요",
   "exclusions": [{"jo": 7, "title": "보험금을 지급하지 않는 사유", "body": "…"}]
 }
 ```

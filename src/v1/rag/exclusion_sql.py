@@ -25,14 +25,28 @@ def is_exclusion_query(query: str) -> bool:
     return bool(_EXCLUSION_INTENT_RE.search(query))
 
 
-def format_exclusions(exclusions: list[dict]) -> str:
-    """상품 면책 조 [{jo, title, body}] → 실제 사유 나열. 없으면 RAG 폴백.
-
-    body에서 표준 태그(고의·전쟁내란 등) 합집합 + 조 참조. "확인 필요" 톤(부모 보통약관
-    공통면책 미확보 가능 — 없는 걸 안전하다 단정 안 함, precision-first).
+def common_exclusion_note(resolution_note: str | None) -> str:
+    """특약 공통면책 준용 완결성 — 특약은 고유 면책(고의)만 자체 보유하고 공통면책(전쟁·임신·
+    위험활동 등)은 주계약 준용 소관. 주계약 미확보면 **없는 걸 안전하다 하지 않고** 명시한다
+    (domain-model.md 면책 준용, precision-first). resolution_note에 '준용'이 있으면 특약 신호.
     """
+    if resolution_note and "준용" in resolution_note:
+        m = re.search(r"제\s*\d+\s*조", resolution_note)
+        ref = m.group(0).replace(" ", "") if m else "주계약"
+        return f"※ 공통면책(전쟁·임신·위험활동 등)은 {ref} 준용 소관 — 주계약 미확보로 확인 필요"
+    return ""
+
+
+def format_exclusions(exclusions: list[dict], resolution_note: str | None = None) -> str:
+    """상품 면책 조 [{jo, title, body}] → 실제 사유 나열 + **준용 완결성**. 없으면 RAG 폴백.
+
+    body에서 표준 태그(고의·전쟁내란 등) 합집합 + 조 참조. 특약이면(resolution_note에 준용)
+    공통면책 준용 미확보를 강제첨부해 "완결"(빠짐 없음)·"정직"(없는 걸 안전하다 안 함).
+    """
+    common = common_exclusion_note(resolution_note)
     if not exclusions:
-        return "면책(지급 제외) 조를 찾지 못했습니다(→RAG)."
+        # 특약이라 자체 면책 조가 없어도 준용 공통면책은 안내(완전 침묵 방지)
+        return common if common else "면책(지급 제외) 조를 찾지 못했습니다(→RAG)."
     tags: list[str] = []
     for e in exclusions:
         for t in extract_exclusion_tags(e.get("body")):
@@ -40,5 +54,9 @@ def format_exclusions(exclusions: list[dict]) -> str:
                 tags.append(t)
     refs = " · ".join(f"제{e['jo']}조" for e in exclusions if e.get("jo"))
     if tags:
-        return f"지급 제외(면책) 사유: {'·'.join(tags)} 등 ({refs}) — 상세는 해당 조 확인 필요"
-    return f"지급 제외(면책): {refs} 참조 — 확인 필요" if refs else "면책 조를 찾지 못했습니다(→RAG)."
+        base = f"지급 제외(면책) 사유: {'·'.join(tags)} 등 ({refs}) — 상세는 해당 조 확인 필요"
+    elif refs:
+        base = f"지급 제외(면책): {refs} 참조 — 확인 필요"
+    else:
+        return common if common else "면책 조를 찾지 못했습니다(→RAG)."
+    return f"{base}  {common}" if common else base
