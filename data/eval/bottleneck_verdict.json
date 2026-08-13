@@ -10,6 +10,51 @@
     "mrr": 0.861,
     "n": 25
   },
+  "segments": {
+    "present": true,
+    "vocab": [
+      "소득보장수술",
+      "중환자실",
+      "간병인",
+      "입원급여금",
+      "입원비보험",
+      "충치",
+      "치아우식증",
+      "특약",
+      "준용",
+      "갱신",
+      "해약환급금",
+      "감액",
+      "연체",
+      "청약철회",
+      "면책",
+      "담보"
+    ],
+    "segments": {
+      "domain": {
+        "n": 19,
+        "recall": {
+          "1": 0.8421052631578947,
+          "3": 1.0,
+          "5": 1.0,
+          "10": 1.0
+        },
+        "mrr": 0.921
+      },
+      "general": {
+        "n": 6,
+        "recall": {
+          "1": 0.5,
+          "3": 0.8333333333333334,
+          "5": 1.0,
+          "10": 1.0
+        },
+        "mrr": 0.672
+      }
+    },
+    "verdict": "도메인 열위 없음",
+    "n": 25
+  },
   "generation": {
     "present": true,
     "faithfulness": NaN,
@@ -27,6 +72,8 @@
     "next": "eval_ragas를 **비편향 judge(OPENAI_API_KEY, GPT-4o-mini)**로 재측정해 faithfulness 확정 → 그 값이 목표 미달이면 Phase 2 개시",
     "notes": [
       "retrieval: recall@5=1.0 recall@3=0.96 MRR=0.861 (n=25) → 충분",
+      "  세그먼트(n=도메인19/일반6): recall@1 도메인=0.842 vs 일반=0.500 · MRR 도메인=0.921 vs 일반=0.672",
+      "    → 도메인이 오히려 우위(변별력 있는 약관 용어가 강한 앵커) → retrieval-bound 반증, Phase 1(도메인 임베딩) 가설 기각 방향",
       "generation: faithfulness=nan answer_relevancy=0.6950699723126093 judge=편향(self) (n=10) → 약함 신호: answer_relevancy=0.695<0.8",
       "  ⚠ faithfulness=nan → 근거준수 미측정(생성측 핵심 신호 공백)",
       "  ⚠ judge=self(serving과 동일) → self-preference bias, 값 신뢰 강등"

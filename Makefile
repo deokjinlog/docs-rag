@@ -47,7 +47,7 @@ check: ## 관계형 추출 자립 골든 9종 + 전처리 게이트 (배포 관�
 eval: ## RAGAS Triad 평가 (Judge=GPT-4o-mini 권장 — OPENAI_API_KEY env 필요. --basic 플래그는 직접 호출)
 	uv run python scripts/eval_ragas.py
 
-eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve 호출. --update-baseline로 기준선 고정)
+eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve 호출. --update-baseline로 기준선 고정. --segment로 도메인/일반 분해)
 	python3 scripts/eval_retrieval.py
 
 chunk-quality: ## RAG 청크 전처리 완성도 게이트 (br·img·page·점선·고아heading·커버리지, 스택 불필요)

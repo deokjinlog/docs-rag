@@ -42,6 +42,16 @@ def load_retrieval() -> dict:
     return {"present": True, "recall": rec, "mrr": d.get("mrr"), "n": d.get("n")}
 
 
+def load_segments() -> dict:
+    """retrieval 세그먼트 분해(eval_retrieval --segment) — 도메인 어휘 vs 일반 recall.
+    §1.4: 도메인 쿼리가 일반보다 유의미 열위면 retrieval-bound(도메인 특화) 신호."""
+    p = os.path.join(EVAL, "retrieval_segments.json")
+    if not os.path.exists(p):
+        return {"present": False}
+    d = json.load(open(p, encoding="utf-8"))
+    return {"present": True, **d}
+
+
 def load_generation() -> dict:
     p = os.path.join(EVAL, "ragas_eval_result.json")
     if not os.path.exists(p):
@@ -61,9 +71,10 @@ def load_generation() -> dict:
     }
 
 
-def diagnose(retr: dict, gen: dict) -> dict:
+def diagnose(retr: dict, gen: dict, seg: dict | None = None) -> dict:
     """§1.4 판별식 — retrieval 충분성 × generation 품질(+측정품질) → 병목 방향."""
     notes = []
+    seg = seg or {"present": False}
 
     # ── retrieval 충분성: 정답 청크가 top-k에 드는가 ─────────────────────────
     if not retr.get("present"):
@@ -75,6 +86,28 @@ def diagnose(retr: dict, gen: dict) -> dict:
                            (r3 is not None and r3 >= RECALL3_TARGET)
     notes.append(f"retrieval: recall@5={r5} recall@3={r3} MRR={retr.get('mrr')} (n={retr.get('n')}) "
                  f"→ {'충분' if retrieval_sufficient else '부족'}")
+
+    # ── 세그먼트 분해: 도메인 어휘 쿼리가 일반보다 열위인가(§1.4 핵심) ─────────
+    # recall@5는 집계 1.0이면 세그먼트도 정의상 1.0(포화) → 판별 신호는 미포화 축(recall@1·MRR).
+    domain_weak = False
+    if seg.get("present"):
+        s = seg.get("segments", {})
+        dom, gen_s = s.get("domain", {}), s.get("general", {})
+        d1, g1 = dom.get("recall", {}).get("1"), gen_s.get("recall", {}).get("1")
+        dm, gm = dom.get("mrr"), gen_s.get("mrr")
+        if d1 is not None and g1 is not None:
+            # 도메인 열위 = 도메인이 일반보다 recall@1·MRR 모두 유의미(≥0.1) 낮을 때
+            domain_weak = (g1 - d1 >= 0.1) and (gm is not None and dm is not None and gm - dm >= 0.1)
+            inverted = (d1 - g1 >= 0.1) or (dm is not None and gm is not None and dm - gm >= 0.1)
+            notes.append(f"  세그먼트(n=도메인{dom.get('n')}/일반{gen_s.get('n')}): "
+                         f"recall@1 도메인={d1:.3f} vs 일반={g1:.3f} · MRR 도메인={dm} vs 일반={gm}")
+            if domain_weak:
+                notes.append("    → 도메인 어휘 쿼리 열위 → retrieval-bound(도메인 특화) 신호 → Phase 1a(리랭커) 검토")
+            elif inverted:
+                notes.append("    → 도메인이 오히려 우위(변별력 있는 약관 용어가 강한 앵커) → "
+                             "retrieval-bound 반증, Phase 1(도메인 임베딩) 가설 기각 방향")
+            else:
+                notes.append("    → 세그먼트 차이 미미 → retrieval 병목 배제 견고화")
 
     # ── generation 품질 + 측정품질 ────────────────────────────────────────
     gen_measured = False
@@ -138,7 +171,8 @@ def diagnose(retr: dict, gen: dict) -> dict:
 def main():
     retr = load_retrieval()
     gen = load_generation()
-    v = diagnose(retr, gen)
+    seg = load_segments()
+    v = diagnose(retr, gen, seg)
 
     print("=" * 70)
     print("병목 분해 — retrieval-bound vs generation-bound (로드맵 Phase 0 게이트)")
@@ -154,7 +188,7 @@ def main():
 
     out = os.path.join(EVAL, "bottleneck_verdict.json")
     with open(out, "w", encoding="utf-8") as f:
-        json.dump({"retrieval": retr, "generation": gen, "diagnosis": v,
+        json.dump({"retrieval": retr, "segments": seg, "generation": gen, "diagnosis": v,
                    "targets": {"recall@5": RECALL5_TARGET, "recall@3": RECALL3_TARGET,
                                "faithfulness": FAITHFULNESS_TARGET, "answer_relevancy": RELEVANCY_TARGET}},
                   f, ensure_ascii=False, indent=2, default=str)

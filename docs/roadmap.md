@@ -48,6 +48,14 @@ self-judge(편향)** 이라 생성측을 확정 못 함. **게이트 BLOCKED** �
 `eval_ragas` 재측정해 faithfulness를 확정해야 Phase 2 트리거가 열린다. 판정 근거는
 `data/eval/bottleneck_verdict.json` 에 보존(precision-first: nan/편향 데이터로 확정 판정을 지어내지 않음).
 
+**세그먼트 분해가 Phase 1 가설을 반증(`eval_retrieval --segment`)**: §2.1은 "도메인 용어 쿼리가
+일반보다 recall 낮으면 retrieval-bound → Phase 1"을 트리거로 뒀다. 실측은 **정반대** — 도메인 어휘
+질의(n=19: 중환자실·소득보장수술·특약…)가 recall@1=0.842·MRR=0.921로, 일반 질의(n=6: 0.500·0.672)
+보다 **더 잘** 검색된다(recall@5는 집계 1.0의 귀결로 둘 다 1.0 → 판별은 미포화 축인 @1·MRR). 변별력
+있는 약관 용어가 강한 검색 앵커라 오히려 일반적 표현이 여러 청크와 경쟁해 순위가 흐려지는 것. →
+**Phase 1(도메인 임베딩 대조학습) 트리거는 충족과 더 멀어졌다**(도메인이 약점이 아니라 강점). 단
+일반 세그먼트 n=6은 작아 방향 신호로만(재라벨·확장은 §1.2).
+
 ### 1.2 평가셋 — 코퍼스 마이닝으로 silver golden
 
 golden chunk 라벨링(도메인 전문가 3~6h)을 우회하고 **기존 코퍼스에서 pseudo-golden을 마이닝**한다:
@@ -82,6 +90,11 @@ Phase 0가 다음 분기를 만든다. **여기서 나온 숫자가 없으면 Ph
 ### 2.1 트리거
 
 Phase 0에서 **retrieval-bound** 판정 + 도메인 용어 쿼리가 일반 쿼리보다 Recall 유의미하게 낮음. (트리거 미충족 시 미도입.)
+
+> **현재 트리거 미충족 — 오히려 반증됨**: `eval_retrieval --segment`(2026-08-13) 실측상 도메인 어휘
+> 질의가 일반보다 **더** 잘 검색됨(recall@1 0.842 vs 0.500·MRR 0.921 vs 0.672). 도메인 용어 열위가
+> Phase 1의 전제인데 반대 신호가 나왔으므로, 임베딩 대조학습은 현 데이터상 근거 없음. 재측정으로
+> 도메인 열위가 확인될 때만 재검토(§1.4 판별식이 자동 감시).
 
 ### 2.2 방법
 
@@ -168,3 +181,4 @@ precision/품질 임계는 README "검증되지 않은 영역"의 `semantic_judg
 <!-- 로드맵 갱신 시 여기에 append (oldest first) -->
 - 2026-07-23 · 최초 작성 — 측정-먼저 3-Phase 로드맵(대조학습·LoRA·RAGAS 확장) 설계. 트리거 조건부 + 코퍼스 마이닝 데이터 전제.
 - 2026-08-13 · Phase 0 판별식 구현(`diagnose_bottleneck.py`, `make diagnose`) — retrieval·ragas baseline을 읽어 retrieval-bound/generation-bound 판정 + 입력 품질 자가 채점. 현재 `generation-leaning(잠정)`: retrieval 충분(recall@5=1.0)·검색 병목 배제, 그러나 RAGAS faithfulness=nan+self-judge라 게이트 BLOCKED → 비편향 judge 재측정이 트리거. "병목 분해=없음" 해소.
+- 2026-08-13 · retrieval 세그먼트 분해(`eval_retrieval --segment`, 도메인 어휘 vs 일반) — 도메인 질의가 recall@1 0.842·MRR 0.921로 일반(0.500·0.672)보다 우위. Phase 1(도메인 임베딩)의 전제(도메인 열위)를 **반증** → 트리거 더 멀어짐. 판별식이 @5(포화) 대신 @1·MRR로 세그먼트 비교하도록 정밀화.

@@ -33,10 +33,26 @@ import http.client
 _HERE = pathlib.Path(__file__).parent
 GOLDEN = _HERE.parent / "data" / "eval" / "golden_retrieval.jsonl"
 BASELINE = _HERE.parent / "data" / "eval" / "retrieval_baseline.json"
+SEGMENTS = _HERE.parent / "data" / "eval" / "retrieval_segments.json"
 API_BASE = os.environ.get("RAG_API_BASE", "http://localhost:8002/api/v1/docs-rag")
 KS = [1, 3, 5, 10]
 TOP_K = max(KS)
 EPS = 1e-6                                   # baseline 대조 허용오차(부동소수 노이즈)
+
+# 세그먼트 분류(로드맵 §1.4) — 약관 **도메인 어휘/엔티티**를 담은 질의 vs 일반 소비자 질의.
+# 파인튜닝 판별식이 묻는 것: 일반 임베더가 도메인 용어를 일반어만큼 검색하나(도메인 열위면
+# retrieval-bound → Phase 1). 목록을 **공개**해 세그먼트가 재현·감사 가능하게(체리피킹 방지).
+DOMAIN_VOCAB = [
+    # 담보·특약·질병 고유명(엔티티)
+    "소득보장수술", "중환자실", "간병인", "입원급여금", "입원비보험", "충치", "치아우식증",
+    # 약관 계약 전문용어
+    "특약", "준용", "갱신", "해약환급금", "감액", "연체", "청약철회", "면책", "담보",
+]
+
+
+def _classify_segment(query: str) -> str:
+    """질의가 도메인 어휘를 담으면 'domain', 아니면 'general'. 공개 목록 기반(재현 가능)."""
+    return "domain" if any(v in query for v in DOMAIN_VOCAB) else "general"
 
 
 def _norm(s: str) -> str:
@@ -109,6 +125,7 @@ def main():
     agg = {k: 0 for k in KS}
     mrr = 0.0
     misses = []
+    per_query = []          # 세그먼트 집계용 (segment, hit@k, rank)
     try:
         for r in rows:
             src = _retrieve(r["query"], r.get("service_code", "01"), r.get("document_id"))
@@ -119,6 +136,7 @@ def main():
             mrr += (1.0 / rank) if rank else 0.0
             if not rank:
                 misses.append(r["query"])
+            per_query.append({"segment": _classify_segment(r["query"]), "hit": hit, "rank": rank})
             rank_s = str(rank) if rank else "—"
             marks = "".join("✅" if hit[k] else "❌" for k in (1, 3, 5))
             print(f"{r['query'][:38]:<40}{r['gold_clause'][:20]:<22}{rank_s:<5}"
@@ -136,6 +154,35 @@ def main():
     print(f"  {line}   (n={n})")
     if misses:
         print(f"  top-{TOP_K} 밖 미검출 {len(misses)}건: " + " / ".join(m[:24] for m in misses))
+
+    # 세그먼트 분해(로드맵 §1.4) — 도메인 어휘 질의가 일반보다 검색 열위인가
+    if "--segment" in sys.argv:
+        seg_out = {}
+        print("-" * 92)
+        print("  [세그먼트 분해 — 도메인 어휘 vs 일반]")
+        for seg in ("domain", "general"):
+            items = [q for q in per_query if q["segment"] == seg]
+            if not items:
+                continue
+            sn = len(items)
+            srecall = {k: sum(q["hit"][k] for q in items) / sn for k in KS}
+            smrr = sum((1.0 / q["rank"]) if q["rank"] else 0.0 for q in items) / sn
+            seg_out[seg] = {"n": sn, "recall": srecall, "mrr": round(smrr, 3)}
+            sline = "  ".join(f"@{k}={srecall[k]:.3f}" for k in KS)
+            print(f"    {seg:<8}(n={sn:2}) recall {sline}  MRR={smrr:.3f}")
+        # 판정 보조: 도메인이 일반보다 recall@5 유의미 열위인가
+        d5 = seg_out.get("domain", {}).get("recall", {}).get(5)
+        g5 = seg_out.get("general", {}).get("recall", {}).get(5)
+        verdict = None
+        if d5 is not None and g5 is not None:
+            gap = g5 - d5
+            verdict = ("도메인 열위(≥0.1)" if gap >= 0.1 else "도메인 열위 없음")
+            print(f"    → recall@5 격차(일반−도메인)={gap:+.3f} → {verdict} "
+                  f"({'retrieval-bound 신호' if gap >= 0.1 else 'retrieval 병목 배제 견고화'})")
+        SEGMENTS.write_text(json.dumps(
+            {"vocab": DOMAIN_VOCAB, "segments": seg_out, "verdict": verdict, "n": n},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"  → 저장: {SEGMENTS.name}")
 
     # 순증(monotonic) 대조 — recall@5·MRR이 회귀했나
     cur = {"recall": recall, "mrr": mrr, "n": n}
