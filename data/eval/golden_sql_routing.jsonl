@@ -1,0 +1,14 @@
+{"query":"중환자실 입원하면 하루 얼마 받아요?","route":"sql","kind":"payout","note":"amount 게이트"}
+{"query":"레진 충전 질병으로 1년 지나서 지급률은 얼마?","route":"sql","kind":"payout","note":"amount"}
+{"query":"12개월 소득보장 수술 받으면 매월 얼마?","route":"sql","kind":"payout","note":"amount"}
+{"query":"중환자실은 1년 이내 재해 외 원인이면 얼마나 감액되나요?","route":"sql","kind":"payout","note":"amount(감액)+담보. 담보 없는 감액 질의는 select_payout miss→RAG(2중 안전)"}
+{"query":"중환자실 특약 청약철회 언제까지 가능한가요?","route":"sql","kind":"terms","note":"terms 게이트+담보해소"}
+{"query":"중환자실 특약 갱신되나요?","route":"sql","kind":"terms","note":"terms"}
+{"query":"C50 유방암은 보장되나요?","route":"sql","kind":"coverage","note":"coverage 게이트+코드"}
+{"query":"D05는 암진단자금으로 보장돼요?","route":"sql","kind":"coverage","note":"coverage(미보장 리다이렉트)"}
+{"query":"위암은 보장되나요?","route":"sql","kind":"coverage","note":"coverage(병명맵 C16)"}
+{"query":"Z99는 보장되나요?","route":"sql","kind":"coverage","note":"coverage(판정불가도 결정론)"}
+{"query":"무면허운전 시 보험금이 보장되나요?","route":"rag","kind":"interpretation","note":"보장 게이트 켜지나 코드 없음→RAG"}
+{"query":"중환자실 입원급여금은 언제 지급되나요?","route":"rag","kind":"interpretation","note":"지급사유 해석(담보만 겹침)"}
+{"query":"보험금 청구는 어떻게 하나요?","route":"rag","kind":"procedure","note":"절차"}
+{"query":"충치는 어떻게 정의되나요?","route":"rag","kind":"definition","note":"정의"}
