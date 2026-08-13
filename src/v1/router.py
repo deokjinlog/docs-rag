@@ -36,13 +36,15 @@ from .rag.search import (
 )
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
-from .repository import DocumentRepository, FeedbackRepository
+from .repository import DocumentRepository, FeedbackRepository, PayoutRepository
+from .rag.payout_sql import select_payout, format_payout
 from .schemas import (
     AnswerRequest,
     DocumentCreate,
     EmbedRequest,
     FeedbackRequest,
     FeedbackResponse,
+    PayoutRequest,
     RetrieveRequest,
 )
 from .utils import embed_texts
@@ -98,11 +100,13 @@ def _apply_input_guard(body) -> tuple[list[str], list[str]]:
     """
     body.query, q_kinds = mask_pii(body.query)
     body.query, threats = sanitize_input(body.query)
+    # include/exclude_keywords는 Retrieve/Answer body에만 있음 — /payout 등 키워드 없는
+    # body와도 공유하려 getattr 방어(없으면 스킵).
     inc_kinds: list[str] = []
-    if body.include_keywords:
+    if getattr(body, "include_keywords", None):
         body.include_keywords, inc_kinds = mask_pii_list(body.include_keywords)
     exc_kinds: list[str] = []
-    if body.exclude_keywords:
+    if getattr(body, "exclude_keywords", None):
         body.exclude_keywords, exc_kinds = mask_pii_list(body.exclude_keywords)
     return sorted(set(q_kinds + inc_kinds + exc_kinds)), threats
 
@@ -471,6 +475,26 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
 # ─────────────────────────────────────────────────────────────────────────────
 # Embeddings · Feedback
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/payout", summary="결정론 지급 질의 (SQL 경로)", tags=["Retrieval"])
+def payout(body: PayoutRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "얼마/언제" 질의를 payout_rule에서 **결정론**으로 집어온다.
+
+    RAG(/answer)와 분리된 사이드카: `matched=false`면 RAG로 폴백하라는 신호(precision-first —
+    담보 미검출·규칙 미매칭이면 억지 지급률 대신 RAG). 서빙 로직은 `rag/payout_sql.py`,
+    데이터는 `PayoutRepository`(payout_rule). 라우터 통합(질의 유형 감지 후 SQL/RAG 분기)은 후속.
+    """
+    _apply_input_guard(body)
+    rows = PayoutRepository(db).get_rules(body.product_id)
+    rule = select_payout(rows, body.query)
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": rule is not None,
+        "answer": format_payout(rule),
+        "rule": rule,   # 근거: 매칭된 payout_rule row (coverage·rate_pct·limit_days 등). miss면 null
+    }
 
 
 @router.post("/embeddings", summary="텍스트 → 벡터 변환", tags=["Embeddings"])

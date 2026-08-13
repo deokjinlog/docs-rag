@@ -12,6 +12,7 @@ Base URL: `/api/v1/docs-rag`
 | GET | `/documents/{service_code}/{document_id}` | 문서 상태 조회 | O |
 | POST | `/retrieve` | 벡터 검색 | O |
 | POST | `/answer` | RAG 질의응답 | 준멱등 (*) |
+| POST | `/payout` | 결정론 지급 질의 (SQL 경로) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -270,7 +271,66 @@ Base URL: `/api/v1/docs-rag`
 
 ---
 
-## 5. POST /embeddings
+## 5. POST /payout
+
+**결정론 SQL 경로** — "얼마·언제"처럼 값이 정해진 질의를 `payout_rule` 테이블에서 **결정론**으로 집어온다. RAG(`/answer`)와 분리된 **사이드카**: 담보를 못 짚거나 규칙이 안 맞으면 `matched=false` + RAG 폴백 신호(precision-first — 억지 지급률 대신 RAG). 서빙 로직 [`rag/payout_sql.py`](../src/v1/rag/payout_sql.py), 데이터 `PayoutRepository`(payout_rule). 라우터 통합(질의 유형 감지 후 SQL/RAG 자동 분기)은 후속(로드맵 B5).
+
+### Request
+
+```json
+{
+  "query": "중환자실 입원하면 하루 얼마 받아요?",
+  "service_code": "01",
+  "product_id": "LINA_ICU_2024"
+}
+```
+
+| 필드 | 타입 | 필수 | 제한 | 설명 |
+|------|------|------|------|------|
+| query | string | O | max 2000 | 지급 관련 질의 |
+| service_code | string | X | max 10 | 서비스 필터 |
+| product_id | string | X | max 64 | 특정 상품 한정 (미지정 시 전 상품) |
+
+### Response (200)
+
+```json
+{
+  "query": "중환자실 입원하면 하루 얼마 받아요?",
+  "route": "sql",
+  "matched": true,
+  "answer": "중환자실 입원급여금 → 가입금액의 1일당 1% (한도 10일) ※1년이내 재해외 시 50% 감액",
+  "rule": {
+    "product_id": "LINA_ICU_2024", "coverage": "중환자실 입원급여금",
+    "rate_pct": 1, "per_unit": "1일당", "limit_days": 10,
+    "reduction_rate_pct": 50, "reduction_period": "1년이내", "reduction_cause": "재해외"
+  }
+}
+```
+
+| 필드 | 조건 | 설명 |
+|------|------|------|
+| route | 항상 | `"sql"` — 3경로 라우터의 SQL 경로 표식 |
+| matched | 항상 | 결정론 답을 냈나. `false`면 RAG(`/answer`)로 폴백하라는 신호 |
+| answer | 항상 | 결정론 답변 한 줄. `matched=false`면 `"관련 지급규칙을 찾지 못했습니다(→RAG)."` |
+| rule | matched=true일 때만 | 근거 `payout_rule` row (coverage·rate_pct·한도·감액). miss면 `null` |
+
+### 에러
+
+| 코드 | 원인 |
+|------|------|
+| 422 | query 누락, 길이 초과 |
+| 500 | DB 연결 실패, payout_rule 미존재 |
+
+### 클라이언트 패턴 (SQL-first → RAG 폴백)
+
+```javascript
+let r = await post('/payout', {query, service_code: '01'});
+if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결정론 miss → RAG
+```
+
+---
+
+## 6. POST /embeddings
 
 텍스트를 BGE-M3 벡터로 변환한다. 디버깅/테스트용.
 
@@ -308,7 +368,7 @@ Base URL: `/api/v1/docs-rag`
 
 ---
 
-## 6. POST /feedback
+## 7. POST /feedback
 
 `/answer` · `/retrieve`의 응답에 포함된 `trace_id`를 받아 사용자 피드백을 수집한다. 서빙 trace JSONL과 `trace_id`로 조인해서 품질 신호로 사용. 엔드포인트는 서빙 경로와 **완전히 분리** — 실패해도 `/answer`에 영향 없음.
 

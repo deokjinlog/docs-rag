@@ -56,3 +56,37 @@ def test_payout_repository_rate_pct_is_int():
     for r in rows:
         if r.get("rate_pct") is not None:
             assert isinstance(r["rate_pct"], int), f"rate_pct 타입 {type(r['rate_pct'])}"
+
+
+# ── POST /payout 엔드포인트 (SQL 경로 사이드카) ─────────────────────────────
+@pytest.mark.integration
+def test_payout_endpoint_deterministic_hit():
+    """지급 질의 → matched=True + 결정론 answer + 근거 rule."""
+    from fastapi.testclient import TestClient
+    from api import app
+
+    client = TestClient(app)
+    resp = client.post("/api/v1/docs-rag/payout", json={
+        "query": "중환자실 입원하면 하루 얼마 받아요?", "service_code": "01",
+    })
+    assert resp.status_code == 200
+    d = resp.json()
+    if not d["matched"]:
+        pytest.skip("payout_rule 미적재 — load_payout.py --load 필요")
+    assert d["route"] == "sql"
+    assert d["rule"]["rate_pct"] == 1 and "1%" in d["answer"]
+
+
+@pytest.mark.integration
+def test_payout_endpoint_rag_fallback_on_non_payout():
+    """비-payout 질의(청약철회) → matched=False + '→RAG' 폴백 신호(precision-first)."""
+    from fastapi.testclient import TestClient
+    from api import app
+
+    client = TestClient(app)
+    resp = client.post("/api/v1/docs-rag/payout", json={
+        "query": "청약철회는 언제까지 가능한가요?", "service_code": "01",
+    })
+    assert resp.status_code == 200
+    d = resp.json()
+    assert d["matched"] is False and "→RAG" in d["answer"] and d["rule"] is None

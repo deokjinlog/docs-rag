@@ -43,6 +43,17 @@ class RetrieveRequest(BaseModel):
     top_k: int = Field(10, ge=1, le=100)
 
 
+class PayoutRequest(BaseModel):
+    """POST /payout 요청 body — 결정론 SQL 경로("얼마/언제").
+
+    query: 지급 관련 질의 (예: "중환자실 입원하면 하루 얼마?")
+    product_id: 특정 상품으로 한정 (예: LINA_ICU_2024). 미지정 시 전 상품 대상
+    """
+    query: str = Field(..., examples=["중환자실 입원하면 하루 얼마 받아요?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 
