@@ -124,20 +124,44 @@ def format_payout(r: dict | None) -> str:
     return " ".join(parts)
 
 
+# 표준 면책 사유 → 원문 키워드(표기변이 흡수). 표준약관 공통 + 상품별. 오프라인 골든
+# extract_exclusion_reasons.py(12/12)와 서빙이 공유하는 **단일 소스**(그쪽이 이걸 import).
+EXCLUSION_TITLE_KW = ("지급하지 않", "지급하지아니", "보상하지 않", "보장하지 않")
+EXCLUSION_REASON_KW = [
+    ("고의", ["고의로"]),
+    ("임신출산", ["임신", "출산", "산후"]),
+    ("전쟁내란", ["전쟁", "무력행사", "혁명", "내란", "사변", "폭동"]),
+    ("위험활동", ["전문등반", "글라이더", "스카이다이빙", "행글라이딩", "전문적인 등산", "모터보트", "자동차경기"]),
+    ("무면허운전", ["무면허"]),
+    ("음주운전", ["음주운전", "주취운전", "주취 상태"]),
+    ("직업위험", ["직업, 직무", "직무 또는 동호회"]),
+]
+
+
+def extract_exclusion_tags(body: str | None) -> list[str]:
+    """면책 조 본문에서 표준 면책 사유 태그 추출(고의·전쟁내란 등). 없으면 []."""
+    if not body:
+        return []
+    return sorted({tag for tag, kws in EXCLUSION_REASON_KW if any(k in body for k in kws)})
+
+
 def format_exclusion_note(exclusions: list[dict]) -> str:
     """면책(지급 제외) 강제첨부 — "얼마?" 답에 항상 붙인다(지급률만 답하고 면책 빠뜨리면
-    소비자 손해, domain-model.md). exclusions=general 면책 조 [{jo, title}]. 없으면 "".
+    소비자 손해, domain-model.md). exclusions=general 면책 조 [{jo, title, body?}]. 없으면 "".
 
-    조 참조만 노출(사유 상세는 해당 조 본문·RAG 소관). 확정 안내가 아니라 "확인 필요" 톤 —
-    corpus에 부모 보통약관 공통면책이 없을 수 있어 없는 걸 안전하다 단정하지 않는다.
+    body가 있으면 실제 사유 태그(고의·전쟁내란 등)를, 없으면 조 참조만. 확정 안내가 아니라
+    "확인 필요" 톤 — 부모 보통약관 공통면책이 corpus에 없을 수 있어 안전하다 단정하지 않는다.
     """
     if not exclusions:
         return ""
-    refs = " · ".join(
-        f"제{e['jo']}조({e['title']})" if e.get("title") else f"제{e['jo']}조"
-        for e in exclusions if e.get("jo")
-    )
-    return f"※ 지급 제외(면책) 확인 필요: {refs}" if refs else ""
+    items = []
+    for e in exclusions:
+        if not e.get("jo"):
+            continue
+        tags = extract_exclusion_tags(e.get("body"))
+        ref = f"제{e['jo']}조"
+        items.append(f"{'·'.join(tags)} 등({ref})" if tags else f"{ref}({e['title']})" if e.get("title") else ref)
+    return f"※ 지급 제외(면책): {' / '.join(items)} 확인 필요" if items else ""
 
 
 def format_payout_complete(rule: dict | None, exclusions: list[dict] | None = None) -> str:

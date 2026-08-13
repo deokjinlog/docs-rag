@@ -380,7 +380,7 @@ class PayoutRepository:
         """
         from sqlalchemy import text
         sql = (
-            "SELECT DISTINCT c.jo, c.title "
+            "SELECT DISTINCT c.jo, c.title, c.body "
             "FROM coverage_exclusion_map m JOIN clause c ON c.clause_id = m.exclusion_clause "
             "WHERE m.product_id = :pid AND m.kind = 'general' "
             "ORDER BY c.jo"

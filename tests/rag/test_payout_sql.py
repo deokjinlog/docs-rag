@@ -7,7 +7,7 @@ payout_rule row 픽스처를 주입해 extract_payout_intent + select_payout + f
 
 from src.v1.rag.payout_sql import (
     extract_payout_intent, select_payout, format_payout, is_payout_amount_query,
-    format_exclusion_note, format_payout_complete,
+    format_exclusion_note, format_payout_complete, extract_exclusion_tags,
 )
 
 
@@ -124,3 +124,19 @@ def test_payout_complete_no_exclusion_is_bare_payout():
 
 def test_payout_complete_miss_returns_rag_signal():
     assert "→RAG" in format_payout_complete(None, [])
+
+
+def test_extract_exclusion_tags_from_body():
+    """면책 조 본문 → 표준 사유 태그(고의·전쟁내란 등). 서빙=오프라인 골든 단일 소스."""
+    tags = extract_exclusion_tags("1. 고의로 자신을 해친 경우 2. 전쟁, 내란, 폭동")
+    assert "고의" in tags and "전쟁내란" in tags
+    assert extract_exclusion_tags("") == []
+
+
+def test_exclusion_note_uses_reason_tags_when_body_present():
+    """body 있으면 조 참조 대신 실제 사유 태그를 노출(강제첨부 실질화)."""
+    note = format_exclusion_note([
+        {"jo": 7, "title": "보험금을 지급하지 않는 사유",
+         "body": "1. 피보험자가 고의로 자신을 해친 경우"},
+    ])
+    assert "고의" in note and "제7조" in note and "면책" in note

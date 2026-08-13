@@ -24,18 +24,14 @@ def _load(name):
 
 pc = _load("parse_clauses")
 st = _load("stage")                                   # processed resolver(clean.md·clauses.jsonl 캐시)
-EXCL_TITLE = ("지급하지 않", "지급하지아니", "보상하지 않", "보장하지 않")
 
-# 표준 면책 사유 → 원문 키워드(표기변이 흡수). 표준약관 공통 사유 + 상품별.
-REASON_KW = [
-    ("고의", ["고의로"]),
-    ("임신출산", ["임신", "출산", "산후"]),
-    ("전쟁내란", ["전쟁", "무력행사", "혁명", "내란", "사변", "폭동"]),
-    ("위험활동", ["전문등반", "글라이더", "스카이다이빙", "행글라이딩", "전문적인 등산", "모터보트", "자동차경기"]),
-    ("무면허운전", ["무면허"]),
-    ("음주운전", ["음주운전", "주취운전", "주취 상태"]),
-    ("직업위험", ["직업, 직무", "직무 또는 동호회"]),
-]
+# 면책 사유 태그·제목 키워드는 **서빙 모듈이 단일 소스**(src/v1/rag/payout_sql.py) — 서빙(/answer
+# 강제첨부)과 이 오프라인 골든(12/12)이 같은 태그를 쓰게. importlib로 파일 직접 로드(sys.path 무관).
+_ps = importlib.util.spec_from_file_location(
+    "payout_sql", os.path.join(HERE, "..", "src", "v1", "rag", "payout_sql.py"))
+payout_sql = importlib.util.module_from_spec(_ps); _ps.loader.exec_module(payout_sql)
+EXCL_TITLE = payout_sql.EXCLUSION_TITLE_KW
+REASON_KW = payout_sql.EXCLUSION_REASON_KW
 
 
 def _exclusion_body(doc: str) -> str:
@@ -44,9 +40,8 @@ def _exclusion_body(doc: str) -> str:
 
 
 def extract_exclusion_reasons(doc: str) -> list:
-    """면책 조 본문 → 표준 면책 사유 태그 목록."""
-    body = _exclusion_body(doc)
-    return sorted({tag for tag, kws in REASON_KW if any(k in body for k in kws)})
+    """면책 조 본문 → 표준 면책 사유 태그 목록. 태그 로직=payout_sql.extract_exclusion_tags."""
+    return payout_sql.extract_exclusion_tags(_exclusion_body(doc))
 
 
 def main():
