@@ -68,6 +68,13 @@ class CoverageRequest(BaseModel):
     product_id: str | None = Field(None, examples=["DIRECT_INPT_2024"], max_length=64)
 
 
+class ExclusionRequest(BaseModel):
+    """POST /exclusion 요청 body — 면책 상세("뭐가 면책이야?")."""
+    query: str = Field(..., examples=["중환자실 특약은 뭐가 면책인가요?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 

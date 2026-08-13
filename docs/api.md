@@ -15,6 +15,7 @@ Base URL: `/api/v1/docs-rag`
 | POST | `/payout` | 결정론 지급 질의 (SQL 경로) | O |
 | POST | `/terms` | 결정론 계약조건 질의 (청약철회·갱신) | O |
 | POST | `/coverage` | 결정론 보장판정 (별표3 ICD 3-값) | O |
+| POST | `/exclusion` | 결정론 면책 상세 (지급 제외 사유) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -398,7 +399,31 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 8. POST /embeddings
+## 8. POST /exclusion
+
+**결정론 면책 상세 경로** — "뭐가 면책이야?(지급 안 되는 사유)"를 면책 조에서 실제 사유(고의·전쟁내란·위험활동 등)로 나열. payout의 **강제첨부**(모든 지급 답에 항상 붙임)와 달리, 면책만 묻는 **단독 질의**의 결정론 답. 상품은 담보 키워드로 해소(`product_id` 직접 지정도 가능) — 못 짚으면 `matched=false`→RAG. "확인 필요" 톤(부모 보통약관 공통면책 미확보 가능, precision-first). 로직 [`rag/exclusion_sql.py`](../src/v1/rag/exclusion_sql.py), 데이터 `coverage_exclusion_map ⋈ clause`.
+
+### Request
+
+```json
+{ "query": "중환자실 특약은 뭐가 면책인가요?", "service_code": "01", "product_id": "LINA_ICU_2024" }
+```
+
+### Response (200)
+
+```json
+{
+  "query": "중환자실 특약은 뭐가 면책인가요?",
+  "route": "sql",
+  "matched": true,
+  "answer": "지급 제외(면책) 사유: 고의 등 (제7조) — 상세는 해당 조 확인 필요",
+  "exclusions": [{"jo": 7, "title": "보험금을 지급하지 않는 사유", "body": "…"}]
+}
+```
+
+---
+
+## 9. POST /embeddings
 
 텍스트를 BGE-M3 벡터로 변환한다. 디버깅/테스트용.
 
@@ -436,7 +461,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 9. POST /feedback
+## 10. POST /feedback
 
 `/answer` · `/retrieve`의 응답에 포함된 `trace_id`를 받아 사용자 피드백을 수집한다. 서빙 trace JSONL과 `trace_id`로 조인해서 품질 신호로 사용. 엔드포인트는 서빙 경로와 **완전히 분리** — 실패해도 `/answer`에 영향 없음.
 
@@ -579,4 +604,4 @@ query 내용에 따라 자동 분류:
 | comparison | Dense heavy (x8/x3) | 비교표 | "1종과 2종 차이" |
 | simple_fact | Hybrid (x6/x6) | 간결 답변 | "보험금 지급 기준" |
 
-**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 결정론 질의를 감지하면 관계형 테이블에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). 세 갈래 — ①**"얼마·지급률"**(`is_payout_amount_query`)→`payout_rule`(+면책 강제첨부), ②**"언제까지·청약철회·갱신"**(`is_terms_query` + 담보 키워드로 상품 해소)→`product`(준용 NULL), ③**"이 병 보장돼요?"**(`is_coverage_query` + ICD 코드 특정)→`coverage_range`(별표3 3-값 판정). 게이트 + 매칭(값 특정)이 **둘 다** 성립할 때만 발동, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).
+**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 결정론 질의를 감지하면 관계형 테이블에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). 네 갈래(순서대로 검사) — ①**"얼마·지급률"**(`is_payout_amount_query`)→`payout_rule`(+면책 강제첨부), ②**"언제까지·청약철회·갱신"**(`is_terms_query`+담보 해소)→`product`(준용 NULL), ③**"이 병 보장돼요?"**(`is_coverage_query`+ICD 코드)→`coverage_range`(별표3 3-값+reconcile payout), ④**"뭐가 면책?"**(`is_exclusion_query`+담보 해소)→면책 사유 나열. 게이트 + 매칭(값 특정)이 **둘 다** 성립할 때만 발동, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끔. 라우팅 회귀는 `make eval-sql-routing`(16문항 accuracy 1.0)로 고정. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).

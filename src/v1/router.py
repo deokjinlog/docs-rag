@@ -47,11 +47,13 @@ from .rag.coverage_sql import (
     is_coverage_query, extract_code, extract_coverage, judge_coverage, format_coverage,
     effective_coverage,
 )
+from .rag.exclusion_sql import is_exclusion_query, format_exclusions
 from .schemas import (
     AnswerRequest,
     CoverageRequest,
     DocumentCreate,
     EmbedRequest,
+    ExclusionRequest,
     FeedbackRequest,
     FeedbackResponse,
     PayoutRequest,
@@ -356,6 +358,27 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                         "citations": [{"claim": _canswer, "refs": [_code], "supported_by_chunks": []}],
                     }
 
+            # SQL 경로 — 면책 상세("뭐가 면책?"). coverage(코드 판정) 뒤 — "보장 안 되는 경우?"는
+            # coverage 게이트가 켜지나 코드 없어 여기로 떨어진다. 상품은 담보 키워드로 해소.
+            if SQL_ROUTE_ENABLED and is_exclusion_query(body.query):
+                _ep = ProductRepository(db).get_terms(coverage_kw=coverage_hint(body.query))
+                _excls = PayoutRepository(db).get_exclusions(_ep["product_id"]) if _ep else []
+                if _excls:
+                    _eanswer = format_exclusions(_excls)
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로(exclusion) 적중: {_ep['product_id']}")
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": _eanswer,
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{"claim": _eanswer,
+                                       "refs": [str(e["jo"]) for e in _excls if e.get("jo")],
+                                       "supported_by_chunks": []}],
+                    }
+
             query_filter = build_filter(
                 service_code=body.service_code,
                 document_id=body.document_id,
@@ -634,6 +657,27 @@ def coverage(body: CoverageRequest, db: Session = Depends(get_db)):
         "answer": _coverage_answer_reconciled(db, body.product_id, code, verdict),  # 판정 + payout 정합
         "code": code,
         "verdict": verdict,   # {verdict, coverage, redirect_coverage, evidence}. 근거
+    }
+
+
+@router.post("/exclusion", summary="결정론 면책 상세 (SQL 경로)", tags=["Retrieval"])
+def exclusion(body: ExclusionRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "뭐가 면책이야?"를 면책 조 사유로 결정론 나열
+    (고의·전쟁내란 등). payout의 강제첨부와 달리 면책만 묻는 단독 질의. 상품 미해소면
+    matched=false→RAG. 로직 `rag/exclusion_sql.py`.
+    """
+    _apply_input_guard(body)
+    pid = body.product_id
+    if not pid:
+        p = ProductRepository(db).get_terms(coverage_kw=coverage_hint(body.query))
+        pid = p["product_id"] if p else None
+    exclusions = PayoutRepository(db).get_exclusions(pid) if pid else []
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": bool(exclusions),
+        "answer": format_exclusions(exclusions),
+        "exclusions": exclusions,   # 근거 면책 조 [{jo, title, body}]
     }
 
 

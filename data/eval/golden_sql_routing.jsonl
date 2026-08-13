@@ -12,3 +12,5 @@
 {"query":"중환자실 입원급여금은 언제 지급되나요?","route":"rag","kind":"interpretation","note":"지급사유 해석(담보만 겹침)"}
 {"query":"보험금 청구는 어떻게 하나요?","route":"rag","kind":"procedure","note":"절차"}
 {"query":"충치는 어떻게 정의되나요?","route":"rag","kind":"definition","note":"정의"}
+{"query":"중환자실 특약은 뭐가 면책인가요?","route":"sql","kind":"exclusion","note":"면책 게이트+담보해소"}
+{"query":"소득보장수술 특약 지급 안 되는 사유는?","route":"sql","kind":"exclusion","note":"면책"}
