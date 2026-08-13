@@ -6,6 +6,7 @@ judge_coverage(코드, ranges, 담보) → 보장/미보장(+리다이렉트)/�
 
 from src.v1.rag.coverage_sql import (
     is_coverage_query, extract_code, extract_coverage, judge_coverage, format_coverage,
+    effective_coverage,
 )
 
 # 다이렉트 별표3 코드범위 (coverage_range 적재본 축약)
@@ -61,3 +62,10 @@ def test_judge_without_coverage_finds_matching():
 
 def test_format_no_code_returns_rag_signal():
     assert "→RAG" in format_coverage(None, None)
+
+
+def test_effective_coverage_for_reconcile():
+    """reconcile용 실제 지급 담보 — 보장=그 담보, 미보장=리다이렉트, 판정불가=None."""
+    assert effective_coverage(judge_coverage("C50", _RANGES, "암진단자금")) == "암진단자금"
+    assert effective_coverage(judge_coverage("D05", _RANGES, "암진단자금")) == "제자리암진단자금"  # 리다이렉트
+    assert effective_coverage(judge_coverage("Z99", _RANGES, "암진단자금")) is None

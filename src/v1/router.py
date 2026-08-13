@@ -39,10 +39,13 @@ from .rag.tokens import calc_context_budget, count_tokens, truncate_context
 from .repository import (
     DocumentRepository, FeedbackRepository, PayoutRepository, ProductRepository, CoverageRepository,
 )
-from .rag.payout_sql import select_payout, format_payout_complete, is_payout_amount_query
+from .rag.payout_sql import (
+    select_payout, format_payout, format_payout_complete, is_payout_amount_query,
+)
 from .rag.terms_sql import is_terms_query, coverage_hint, format_terms
 from .rag.coverage_sql import (
     is_coverage_query, extract_code, extract_coverage, judge_coverage, format_coverage,
+    effective_coverage,
 )
 from .schemas import (
     AnswerRequest,
@@ -122,6 +125,20 @@ def _apply_input_guard(body) -> tuple[list[str], list[str]]:
     if getattr(body, "exclude_keywords", None):
         body.exclude_keywords, exc_kinds = mask_pii_list(body.exclude_keywords)
     return sorted(set(q_kinds + inc_kinds + exc_kinds)), threats
+
+
+def _coverage_answer_reconciled(db, product_id: str | None, code: str | None, verdict: dict | None) -> str:
+    """보장판정 + payout **정합 조립**(reconcile) — 완벽한 답은 모순 없음. 미보장이면 실제
+    담보로 리다이렉트해 그 담보의 payout을 붙인다("암진단자금 미보장 → 제자리암 10%").
+    보장이면 그 담보 payout. domain-model.md 사실 reconciliation(제외 우선).
+    """
+    answer = format_coverage(code, verdict)
+    eff = effective_coverage(verdict)
+    if eff:
+        prule = select_payout(PayoutRepository(db).get_rules(product_id), f"{eff} 얼마 지급")
+        if prule:
+            answer += f"  ※ {eff} 지급: {format_payout(prule)}"
+    return answer
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -325,7 +342,8 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                 _ranges = CoverageRepository(db).get_ranges() if _code else {}
                 if _code and _ranges:
                     _verdict = judge_coverage(_code, _ranges, extract_coverage(body.query))
-                    _canswer = format_coverage(_code, _verdict)
+                    # reconcile payout은 담보 키워드로 전 상품에서 매칭(document_id는 payout 상품 아님)
+                    _canswer = _coverage_answer_reconciled(db, None, _code, _verdict)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(coverage) 적중: {_code} → {_verdict['verdict']}")
                     return {
@@ -613,7 +631,7 @@ def coverage(body: CoverageRequest, db: Session = Depends(get_db)):
         "query": body.query,
         "route": "sql",
         "matched": verdict is not None,   # 코드 특정 + 판정 근거 존재 (판정불가도 결정론 답)
-        "answer": format_coverage(code, verdict),
+        "answer": _coverage_answer_reconciled(db, body.product_id, code, verdict),  # 판정 + payout 정합
         "code": code,
         "verdict": verdict,   # {verdict, coverage, redirect_coverage, evidence}. 근거
     }

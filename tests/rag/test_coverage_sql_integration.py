@@ -64,6 +64,21 @@ def test_coverage_endpoint_no_code_rag_fallback():
 
 
 @pytest.mark.integration
+def test_coverage_reconcile_attaches_redirect_payout():
+    """정합(reconcile) — D05 암진단자금 미보장 → 제자리암진단자금으로 리다이렉트 + payout 첨부."""
+    from fastapi.testclient import TestClient
+    from api import app
+
+    client = TestClient(app)
+    d = client.post("/api/v1/docs-rag/coverage", json={
+        "query": "암진단자금 D05면 얼마 받고 보장되나요?", "service_code": "01"}).json()
+    if not d["matched"]:
+        pytest.skip("coverage_range/payout 미적재")
+    assert d["verdict"]["verdict"] == "미보장"
+    assert "제자리암진단자금" in d["answer"] and "%" in d["answer"]   # 리다이렉트 담보 + payout
+
+
+@pytest.mark.integration
 def test_answer_routes_coverage_query_to_sql_no_llm():
     """/answer 보장판정 질의 → route=sql, LLM 미호출, 리다이렉트 노출."""
     from unittest.mock import patch

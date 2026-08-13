@@ -113,6 +113,18 @@ def judge_coverage(code: str, ranges: dict, coverage: str | None = None) -> dict
             "evidence": f"{code} 어느 범위에도 없음 → RAG/전문가"}
 
 
+def effective_coverage(verdict: dict | None) -> str | None:
+    """판정 결과의 '실제 지급 담보' — reconcile용. 보장이면 그 담보, 미보장이면 리다이렉트,
+    판정불가면 None. 이 담보의 payout을 붙이면 "얼마+보장"의 정합 답(모순 없음)이 된다."""
+    if not verdict:
+        return None
+    if verdict["verdict"] == "보장":
+        return verdict.get("coverage")
+    if verdict["verdict"] == "미보장":
+        return verdict.get("redirect_coverage")
+    return None
+
+
 def format_coverage(code: str | None, verdict: dict | None) -> str:
     """보장판정 결과를 소비자 답변 한 줄로. code 못 짚으면 RAG 폴백."""
     if not code:
