@@ -94,7 +94,7 @@ flowchart LR
 
 **답변 = 조회가 아니라 조립.** 특약·보통약관·별표에 흩어진 조각을 준용·강제첨부로 해소해 모으고, **완결성 게이트**가 필수 요소(면책 등) 누락을 검출한다. 보장판정이 지급률을 게이팅해 모순을 화해한다 — 예: *"D05는 암진단자금 미보장 → 제자리암 담보 10%"*.
 
-**상태**: 관계형 테이블 **실 DB 적재 완료**(product 41·clause 307·payout_rule 94/4상품) + **3경로 라우팅 서빙 중**. `/answer`가 결정론 질의를 **자동으로 SQL 경로**로 보낸다(LLM 미호출, `route.strategy="sql"`) — **"얼마·지급률"**→`payout_rule`(+면책 강제첨부), **"청약철회·갱신"**→`product`(준용 NULL). 담보만 겹치는 "언제 지급·정의" 해석은 RAG로 (게이트 + 매칭 2중 안전, precision-first). 예: "중환자실 하루 얼마?" → `1일당 1% ※재해외 50% 감액 · 지급 제외(면책): 고의 등(제7조)`, "중환자실 특약 청약철회?" → `갱신형 · 청약철회: 제19조 준용 소관 — 확인 필요`(억지 값 안 냄). 별도 `POST /payout`·`/terms` 사이드카도 제공. 로직 [`payout_sql.py`](src/v1/rag/payout_sql.py)(골든 5/5 실 DB). 방법론은 [eval-and-golden.md](docs/eval-and-golden.md), 도메인은 [domain-model.md](docs/domain-model.md).
+**상태**: 관계형 테이블 **실 DB 적재 완료**(product 41·clause 307·payout_rule 94/4상품) + **3경로 라우팅 서빙 중**. `/answer`가 결정론 질의를 **자동으로 SQL 경로**로 보낸다(LLM 미호출, `route.strategy="sql"`) — **"얼마·지급률"**→`payout_rule`(+면책 강제첨부), **"청약철회·갱신"**→`product`(준용 NULL), **"이 병 보장돼요?"**→`coverage_range`(별표3 ICD 3-값 판정). 나머지·미특정은 RAG로 (게이트 + 값 특정 2중 안전, precision-first). 예: "중환자실 하루 얼마?"→`1일당 1% ※재해외 50% 감액 · 지급 제외(면책): 고의 등(제7조)`, "중환자실 특약 청약철회?"→`청약철회: 제19조 준용 소관 — 확인 필요`(억지 값 안 냄), "D05는 암진단자금 보장?"→`미보장 → 실제 담보: 제자리암진단자금`(담보특정성). 별도 `POST /payout`·`/terms`·`/coverage` 사이드카도 제공. 로직 [`payout_sql.py`](src/v1/rag/payout_sql.py)(골든 5/5 실 DB). 방법론은 [eval-and-golden.md](docs/eval-and-golden.md), 도메인은 [domain-model.md](docs/domain-model.md).
 
 ## 평가 — 측정으로 자생하는 루프
 

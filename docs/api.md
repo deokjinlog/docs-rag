@@ -14,6 +14,7 @@ Base URL: `/api/v1/docs-rag`
 | POST | `/answer` | RAG 질의응답 | 준멱등 (*) |
 | POST | `/payout` | 결정론 지급 질의 (SQL 경로) | O |
 | POST | `/terms` | 결정론 계약조건 질의 (청약철회·갱신) | O |
+| POST | `/coverage` | 결정론 보장판정 (별표3 ICD 3-값) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -367,7 +368,37 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 7. POST /embeddings
+## 7. POST /coverage
+
+**결정론 보장판정 경로** — "이 병(코드) 보장돼요?"를 별표3 ICD 코드범위로 **3-값 판정**(보장 / 미보장→실제 담보 리다이렉트 / 판정불가). 억지 판정 안 함(판정불가 = precision-first). 담보 특정성 반영 — 같은 코드도 담보 따라 갈림(D05는 암진단자금엔 **미보장**, 제자리암진단자금엔 **보장**). **병명→코드는 별도 계층** — 코드 미특정(미매핑 병명)이면 `matched=false`→RAG. 로직 [`rag/coverage_sql.py`](../src/v1/rag/coverage_sql.py), 데이터 `coverage_range`(`load_coverage.py --load`, 담보별 별표3 있는 다이렉트).
+
+### Request
+
+```json
+{ "query": "C50 유방암은 보장되나요?", "service_code": "01", "product_id": "DIRECT_INPT_2024" }
+```
+
+### Response (200)
+
+```json
+{
+  "query": "D05는 암진단자금으로 보장돼요?",
+  "route": "sql",
+  "matched": true,
+  "answer": "D05 → 미보장 (암진단자금) → 실제 담보: 제자리암진단자금. D05는 제자리암진단자금 범위(D05) — 암진단자금 아님",
+  "code": "D05",
+  "verdict": {"verdict": "미보장", "coverage": "암진단자금", "redirect_coverage": "제자리암진단자금", "evidence": "…"}
+}
+```
+
+| 필드 | 조건 | 설명 |
+|------|------|------|
+| code | 항상 | 질의에서 특정한 ICD 코드(명시 우선, 소형 병명맵). 못 짚으면 `null`→matched=false |
+| verdict | matched=true | `{verdict(보장/미보장/판정불가), coverage, redirect_coverage, evidence}` |
+
+---
+
+## 8. POST /embeddings
 
 텍스트를 BGE-M3 벡터로 변환한다. 디버깅/테스트용.
 
@@ -405,7 +436,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 8. POST /feedback
+## 9. POST /feedback
 
 `/answer` · `/retrieve`의 응답에 포함된 `trace_id`를 받아 사용자 피드백을 수집한다. 서빙 trace JSONL과 `trace_id`로 조인해서 품질 신호로 사용. 엔드포인트는 서빙 경로와 **완전히 분리** — 실패해도 `/answer`에 영향 없음.
 
@@ -548,4 +579,4 @@ query 내용에 따라 자동 분류:
 | comparison | Dense heavy (x8/x3) | 비교표 | "1종과 2종 차이" |
 | simple_fact | Hybrid (x6/x6) | 간결 답변 | "보험금 지급 기준" |
 
-**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 결정론 질의를 감지하면 관계형 테이블에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). 두 갈래 — ①**"얼마·지급률"**(amount 게이트 `is_payout_amount_query`)→`payout_rule`(+면책 강제첨부), ②**"언제까지·청약철회·갱신"**(terms 게이트 `is_terms_query` + 담보 키워드로 상품 해소)→`product`(준용 NULL 포함). 게이트 + 매칭이 **둘 다** 성립할 때만 발동, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).
+**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 결정론 질의를 감지하면 관계형 테이블에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). 세 갈래 — ①**"얼마·지급률"**(`is_payout_amount_query`)→`payout_rule`(+면책 강제첨부), ②**"언제까지·청약철회·갱신"**(`is_terms_query` + 담보 키워드로 상품 해소)→`product`(준용 NULL), ③**"이 병 보장돼요?"**(`is_coverage_query` + ICD 코드 특정)→`coverage_range`(별표3 3-값 판정). 게이트 + 매칭(값 특정)이 **둘 다** 성립할 때만 발동, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).

@@ -36,11 +36,17 @@ from .rag.search import (
 )
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
-from .repository import DocumentRepository, FeedbackRepository, PayoutRepository, ProductRepository
+from .repository import (
+    DocumentRepository, FeedbackRepository, PayoutRepository, ProductRepository, CoverageRepository,
+)
 from .rag.payout_sql import select_payout, format_payout_complete, is_payout_amount_query
 from .rag.terms_sql import is_terms_query, coverage_hint, format_terms
+from .rag.coverage_sql import (
+    is_coverage_query, extract_code, extract_coverage, judge_coverage, format_coverage,
+)
 from .schemas import (
     AnswerRequest,
+    CoverageRequest,
     DocumentCreate,
     EmbedRequest,
     FeedbackRequest,
@@ -312,6 +318,26 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                                        "supported_by_chunks": []}],
                     }
 
+            # SQL 경로 — 보장판정("이 병 보장돼요?": 별표3 ICD). coverage 게이트 + 코드 특정되면
+            # 결정론 3-값 판정, 아니면 RAG(병명→코드 못 짚으면 RAG 소관).
+            if SQL_ROUTE_ENABLED and is_coverage_query(body.query):
+                _code = extract_code(body.query)
+                _ranges = CoverageRepository(db).get_ranges() if _code else {}
+                if _code and _ranges:
+                    _verdict = judge_coverage(_code, _ranges, extract_coverage(body.query))
+                    _canswer = format_coverage(_code, _verdict)
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로(coverage) 적중: {_code} → {_verdict['verdict']}")
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": _canswer,
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{"claim": _canswer, "refs": [_code], "supported_by_chunks": []}],
+                    }
+
             query_filter = build_filter(
                 service_code=body.service_code,
                 document_id=body.document_id,
@@ -570,6 +596,26 @@ def terms(body: TermsRequest, db: Session = Depends(get_db)):
         "matched": product is not None,
         "answer": format_terms(product),
         "product": product,   # 근거 (is_renewable·cooling_off_days·resolution_note). miss면 null
+    }
+
+
+@router.post("/coverage", summary="결정론 보장판정 (별표3 ICD, SQL 경로)", tags=["Retrieval"])
+def coverage(body: CoverageRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "이 병(코드) 보장돼요?"를 별표3 ICD 범위로 3-값 판정
+    (보장/미보장→리다이렉트/판정불가). 억지 판정 안 함(판정불가=precision-first). 병명→코드는
+    별도 계층 — 코드 미특정이면 matched=false→RAG. 로직 `rag/coverage_sql.py`.
+    """
+    _apply_input_guard(body)
+    code = extract_code(body.query)
+    ranges = CoverageRepository(db).get_ranges(body.product_id)
+    verdict = judge_coverage(code, ranges, extract_coverage(body.query)) if code and ranges else None
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": verdict is not None,   # 코드 특정 + 판정 근거 존재 (판정불가도 결정론 답)
+        "answer": format_coverage(code, verdict),
+        "code": code,
+        "verdict": verdict,   # {verdict, coverage, redirect_coverage, evidence}. 근거
     }
 
 

@@ -92,3 +92,13 @@ CREATE TABLE IF NOT EXISTS coverage_exclusion_map (
     exclusion_clause TEXT REFERENCES clause(clause_id),  -- 면책/감액 조(제7조·제6조⑤)
     kind           TEXT                         -- 'general'(면책) | 'reduction'(감액)
 );
+
+-- 보장판정 서빙 테이블 (별표3 ICD 코드범위 → 담보) — judge_coverage.coverage_ranges 적재본.
+-- 서빙(coverage_sql.judge_coverage)이 doc 파싱 없이 SELECT로 판정하게. load_coverage.py --load.
+CREATE TABLE IF NOT EXISTS coverage_range (
+    id          BIGSERIAL PRIMARY KEY,
+    product_id  TEXT REFERENCES product(product_id),
+    coverage    TEXT,
+    code_token  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_coverage_range_product ON coverage_range(product_id);

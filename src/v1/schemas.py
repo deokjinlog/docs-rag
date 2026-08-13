@@ -61,6 +61,13 @@ class TermsRequest(BaseModel):
     product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
 
 
+class CoverageRequest(BaseModel):
+    """POST /coverage 요청 body — 별표3 ICD 보장판정("이 병 보장돼요?")."""
+    query: str = Field(..., examples=["C50 유방암은 보장되나요?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["DIRECT_INPT_2024"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 

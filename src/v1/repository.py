@@ -411,3 +411,25 @@ class ProductRepository:
         else:
             return None
         return dict(row) if row else None
+
+
+class CoverageRepository:
+    """coverage_range 읽기 (별표3 ICD 보장판정). raw SQL(ORM 밖)."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_ranges(self, product_id: str | None = None) -> dict:
+        """{담보: [코드토큰...]} — coverage_sql.judge_coverage에 주입. product_id 없으면 전체
+        (별표3 담보별 코드범위가 있는 상품은 현재 다이렉트뿐)."""
+        from sqlalchemy import text
+        sql = "SELECT coverage, code_token FROM coverage_range"
+        params: dict = {}
+        if product_id:
+            sql += " WHERE product_id = :pid"
+            params["pid"] = product_id
+        sql += " ORDER BY id"
+        out: dict = {}
+        for r in self.db.execute(text(sql), params).mappings():
+            out.setdefault(r["coverage"], []).append(r["code_token"])
+        return out
