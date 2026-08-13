@@ -301,6 +301,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _answer = format_payout_complete(_rule, _excl)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로 적중: {_rule.get('coverage')} → {_rule.get('rate_pct')}%")
+                    background_tasks.add_task(write_trace, rec)   # SQL 경로도 관측(route.strategy=sql)
                     return {
                         "trace_id": rec.trace_id,
                         "query": body.query,
@@ -325,6 +326,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _tanswer = format_terms(_product)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(terms) 적중: {_product.get('product_id')}")
+                    background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
                         "query": body.query,
@@ -348,6 +350,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _canswer = _coverage_answer_reconciled(db, None, _code, _verdict)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(coverage) 적중: {_code} → {_verdict['verdict']}")
+                    background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
                         "query": body.query,
@@ -367,6 +370,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _eanswer = format_exclusions(_excls, _ep.get("resolution_note"))
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(exclusion) 적중: {_ep['product_id']}")
+                    background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
                         "query": body.query,

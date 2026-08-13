@@ -174,6 +174,7 @@ RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로
 
 ## 관측 (Tracing)
 - 모든 `/retrieve`·`/answer` 요청은 `data/eval/trace/YYYYMMDD/traces.jsonl`에 1줄씩 append (BackgroundTasks 비동기)
+- **주의**: trace write는 각 return 지점에서 `background_tasks.add_task(write_trace, rec)`를 **명시 호출**해야 함(trace_record 컨텍스트매니저는 __exit__에서 자동 write 안 함). /answer SQL 브랜치(payout/terms/coverage/exclusion)는 조기 return하므로 각 브랜치가 이 호출을 해야 관측됨 — route.strategy="sql"로 trace_summary Route Distribution에 집계(누락 시 SQL 사용량이 관측에서 사라짐)
 - 스키마는 [src/v1/rag/trace.py](src/v1/rag/trace.py)의 `TraceRecord` dataclass
 - 응답 `verification` 필드는 `{risk_level, warnings, escalation_required?}`. claim·provenance·critic 상세는 trace 전용 (응답 slim, 관측 풍부)
 - 집계: `scripts/trace_summary.py` (12 섹션, `--feedback` 플래그로 Feedback DB JOIN 13번째 섹션 추가) / 검증: `scripts/smoke_test.py` (11 step)
