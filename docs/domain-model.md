@@ -159,7 +159,7 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 | 상호참조 그래프 | `clause_ref` (조/별표/준용) | ✅ 인덱스 타임 해소 |
 | 면책 강제첨부 | `coverage_exclusion_map` | ✅ 제목 규칙 + 본문 감액 |
 | 별표 종류·행 | `annex` / `annex_row` | ✅ payout/formula/classification |
-| 지급기준표 행 분해(얼마/언제) | `extract_payout.py` `payout_rule` (프로파일 A 3열 + B 매트릭스) | ✅ 라이나·New치아 11/11 · 적재 미완 |
+| 지급기준표 행 분해(얼마/언제) | `extract_payout.py` `payout_rule` (프로파일 A 3열 + B 매트릭스) | ✅ 라이나·New치아 11/11 · **실 DB 적재 완료(payout_rule 94행/4상품)** · router 배선만 남음 |
 | 회사·포맷 차이 흡수 | `select_profile()` (전각/반각) | ✅ 4문서·3회사 검증 |
 | 복합문서 분해 | `split_sections()` | ✅ 보통약관 + 특약 N |
 
@@ -175,8 +175,10 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 4. **고정사실 컬럼 채우기** — 청약철회·갱신·만기 "언제까지"를 조 본문에서 추출(`scripts/extract_terms.py`,
    골든 `golden_terms.jsonl` 8/8). **특약은 준용이라 청약철회 NULL이 정답**(보통약관 소관, TN). 면책기간은 후속.
 5. **지급기준표 → `payout_rule` SQL 적재** — `extract_payout.py`가 뽑은 지급률·단위·한도·경과기간별
-   감액을 실제 테이블로 적재해 3경로(SQL) 라우팅에 연결(현재 추출·골든 검증까지, DB 적재 미완).
-   일반화 확장(다이렉트·소득보장) 중 진짜 불규칙 표를 만나면 LLM 폴백 실전 도입.
+   감액을 실제 테이블로 적재. **실 DB 적재 완료**(`load_payout.py --load`, payout_rule 94행/4상품·
+   query_payout 골든 5/5). **남은 것 = 3경로(SQL/RAG/fetch) router 배선(B5)** — SQL 질의로직은
+   `query_payout.py`로 검증됨, 실서비스는 payout_rule SELECT로 교체해 src/v1 router에 연결.
+   다이렉트는 불규칙 표(병합셀·연령축)라 LLM 폴백 stub 적재(실 LLM은 `LLM_BASE_URL` 후 재적재).
 
 ---
 
