@@ -18,6 +18,23 @@ import re
 # 담보 키워드 — 질의어 ↔ payout_rule.coverage 매칭용
 _COVERAGE_KEYWORDS = ["중환자실", "레진", "아말감", "인레이", "제자리암", "암진단자금", "소득보장"]
 
+# /answer 자동 라우팅 게이트 — "얼마/지급률"처럼 결정론 지급값을 묻는 질의만 SQL로.
+# precision-first: 담보만 언급하고 '언제 지급(지급사유)·정의·방법'을 묻는 해석 질의는 RAG 소관
+# (select_payout은 담보만 있으면 매칭되므로, /answer에선 이 게이트가 먼저 통과해야 SQL 호출).
+# '며칠·한도'는 보장한도(별표)와 겹쳐 오라우팅 위험이라 제외 — 명확한 지급액 신호만 채택.
+_AMOUNT_INTENT_RE = re.compile(
+    r"얼마|금액|지급률|지급액|몇\s*(?:퍼센트|%|프로)|퍼센트|감액|하루\s*얼마|매월\s*얼마"
+)
+
+
+def is_payout_amount_query(query: str) -> bool:
+    """이 질의가 '얼마/지급률' 같은 결정론 지급값을 묻나 — /answer의 SQL 라우팅 게이트.
+
+    True여도 담보·규칙이 안 맞으면 select_payout이 None을 내 RAG로 폴백(2중 안전). 이 게이트의
+    역할은 '지급사유·정의·절차'처럼 담보만 겹치는 해석 질의가 SQL로 새는 걸 막는 것.
+    """
+    return bool(_AMOUNT_INTENT_RE.search(query))
+
 # 원인·연령·경과기간은 하드 필터(담보가 그 축을 쓸 때만)
 _HARD_FILTER_KEYS = ("cause", "age_band", "period_bucket")
 

@@ -510,3 +510,5 @@ query 내용에 따라 자동 분류:
 | procedure | Dense heavy (x8/x3) | 단계별 설명 | "보험금 청구 방법" |
 | comparison | Dense heavy (x8/x3) | 비교표 | "1종과 2종 차이" |
 | simple_fact | Hybrid (x6/x6) | 간결 답변 | "보험금 지급 기준" |
+
+**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 "얼마·지급률" 같은 **결정론 지급값 질의**를 감지하면 `payout_rule`에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). amount 게이트(`is_payout_amount_query` — "얼마/금액/지급률/감액"만, 담보만 겹치는 "언제 지급/정의" 해석은 제외) + 규칙 매칭이 **둘 다** 성립할 때만 발동하고, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).

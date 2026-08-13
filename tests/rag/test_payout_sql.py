@@ -5,7 +5,9 @@ payout_rule row 픽스처를 주입해 extract_payout_intent + select_payout + f
 5케이스를 픽스처로 재현 — SQL 경로 로직의 무회귀 게이트.
 """
 
-from src.v1.rag.payout_sql import extract_payout_intent, select_payout, format_payout
+from src.v1.rag.payout_sql import (
+    extract_payout_intent, select_payout, format_payout, is_payout_amount_query,
+)
 
 
 # payout_rule row 픽스처 (골든 5케이스 커버)
@@ -72,3 +74,26 @@ def test_format_includes_rate_and_limit():
     r = select_payout(_ROWS, "중환자실 하루 얼마?")
     out = format_payout(r)
     assert "1%" in out and "한도 10일" in out
+
+
+# ── amount 게이트 — /answer SQL 라우팅 precision (지급액 질의만 SQL) ──────────
+def test_amount_gate_fires_on_payout_queries():
+    """'얼마/지급률/감액' 등 결정론 지급값 질의 → SQL 라우팅."""
+    for q in [
+        "중환자실 입원하면 하루 얼마 받아요?",
+        "레진 충전 질병 1년 후 지급률은?",
+        "12개월 소득보장 매월 얼마?",
+        "1년 이내 재해 외 원인이면 감액되나요?",
+    ]:
+        assert is_payout_amount_query(q), f"amount 질의 미감지: {q}"
+
+
+def test_amount_gate_excludes_interpretation_queries():
+    """담보를 언급해도 '지급사유·정의·절차·서류'를 묻는 해석 질의는 SQL로 새면 안 됨(RAG 소관)."""
+    for q in [
+        "중환자실 입원급여금은 언제 지급되나요?",   # 지급사유(해석) — 담보만 겹침
+        "충치(치아우식증)는 어떻게 정의되나요?",     # 정의
+        "보험금 청구 시 필요한 서류는?",             # 절차
+        "소득보장수술은 무엇을 참조해 지급되나요?",   # 지급 근거(해석)
+    ]:
+        assert not is_payout_amount_query(q), f"해석 질의가 SQL로 샘: {q}"

@@ -37,7 +37,7 @@ from .rag.search import (
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
 from .repository import DocumentRepository, FeedbackRepository, PayoutRepository
-from .rag.payout_sql import select_payout, format_payout
+from .rag.payout_sql import select_payout, format_payout, is_payout_amount_query
 from .schemas import (
     AnswerRequest,
     DocumentCreate,
@@ -58,6 +58,11 @@ FEEDBACK_ENABLED = os.environ.get("FEEDBACK_ENABLED", "true").lower() == "true"
 # 기본 동작(off): 모든 hard_fail/soft_fail이 그대로 응답에 노출 (escalation flag 없음).
 # 근거·회고: docs/design-retrospective.md. 검색이 진짜 병목이라 측정될 때만 =true 로 켠다.
 CRITIC_DISPATCH_ENABLED = os.environ.get("CRITIC_DISPATCH_ENABLED", "false").lower() == "true"
+
+# SQL 경로 자동 라우팅 (B5) — /answer가 "얼마/지급률" 질의를 payout_rule에서 결정론으로 답한다.
+# 기본 on(검증됨: amount 게이트 precision + payout 골든 5/5). amount 게이트 통과 + select_payout
+# hit여야 발동(2중 안전), 아니면 RAG 그대로. 문제 시 SQL_ROUTE_ENABLED=false로 즉시 끔.
+SQL_ROUTE_ENABLED = os.environ.get("SQL_ROUTE_ENABLED", "true").lower() == "true"
 
 
 router = APIRouter()
@@ -236,7 +241,7 @@ def retrieve(body: RetrieveRequest, background_tasks: BackgroundTasks):
 
 
 @router.post("/answer", summary="RAG 질의응답", tags=["Retrieval"])
-def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
+def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     t0 = time.time()
     pii_found, injection_threats = _apply_input_guard(body)
     request_dict = body.model_dump(exclude_none=False)
@@ -256,6 +261,28 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks):
                 "bm25_factor": route.bm25_factor,
             }
             api_logger.info(f"쿼리 라우팅: strategy={route.strategy.value}, type={route.query_type.value}")
+
+            # SQL 경로 자동 라우팅 (B5) — "얼마/지급률" 결정론 질의는 payout_rule에서 집어온다.
+            # amount 게이트(지급액 질의만) + select_payout hit 둘 다여야 발동, 아니면 RAG 그대로
+            # (담보만 겹치는 해석 질의는 게이트가, 담보/규칙 미매칭은 hit=None이 막는 2중 안전).
+            if SQL_ROUTE_ENABLED and is_payout_amount_query(body.query):
+                _rule = select_payout(PayoutRepository(db).get_rules(), body.query)
+                if _rule is not None:
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로 적중: {_rule.get('coverage')} → {_rule.get('rate_pct')}%")
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": format_payout(_rule),
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{
+                            "claim": format_payout(_rule),
+                            "refs": [r for r in (_rule.get("product_id"), _rule.get("coverage")) if r],
+                            "supported_by_chunks": [],
+                        }],
+                    }
 
             query_filter = build_filter(
                 service_code=body.service_code,

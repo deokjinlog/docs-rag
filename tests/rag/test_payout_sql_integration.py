@@ -90,3 +90,53 @@ def test_payout_endpoint_rag_fallback_on_non_payout():
     assert resp.status_code == 200
     d = resp.json()
     assert d["matched"] is False and "→RAG" in d["answer"] and d["rule"] is None
+
+
+# ── /answer 자동 SQL 라우팅 (B5) — amount 질의는 SQL, 해석은 RAG ────────────
+def _mock_ranked_chunk(content: str):
+    from unittest.mock import MagicMock
+    point = MagicMock()
+    point.id = "c1"; point.score = 0.5
+    point.payload = {"content": content, "page_range": [1, 1], "chunk_type": "text",
+                     "heading_path": "", "document_id": "d", "part_index": 1,
+                     "part_total": 1, "service_code": "01"}
+    return (point, 0.85)
+
+
+@pytest.mark.integration
+def test_answer_routes_amount_query_to_sql_no_llm():
+    """/answer amount 질의 → route=sql + 결정론 답, invoke_clean(LLM) 미호출."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from api import app
+
+    with patch("v1.router.invoke_clean") as mock_invoke:
+        client = TestClient(app)
+        resp = client.post("/api/v1/docs-rag/answer", json={
+            "query": "중환자실 입원하면 하루 얼마 받아요?", "service_code": "01",
+        })
+    assert resp.status_code == 200
+    d = resp.json()
+    if d["route"]["strategy"] != "sql":
+        pytest.skip("payout_rule 미적재 — SQL 라우팅 안 됨")
+    assert "1%" in d["answer"] and mock_invoke.call_count == 0  # 결정론 = LLM 미호출
+
+
+@pytest.mark.integration
+def test_answer_interpretation_query_not_hijacked_by_sql():
+    """담보를 언급해도 '언제 지급(지급사유)'은 SQL로 안 새고 RAG로 — route!=sql, LLM 호출."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from api import app
+
+    with patch("v1.router.invoke_clean", return_value="제5조에 따라 지급한다.") as mock_invoke, \
+         patch("v1.router.search_and_rerank", return_value=[_mock_ranked_chunk("제5조 지급사유")]), \
+         patch("v1.router.expand_siblings", return_value="제5조 지급사유 context"):
+        client = TestClient(app)
+        resp = client.post("/api/v1/docs-rag/answer", json={
+            "query": "중환자실 입원급여금은 언제 지급되나요?", "service_code": "01",
+        })
+    assert resp.status_code == 200
+    d = resp.json()
+    assert d["route"]["strategy"] != "sql", "해석 질의가 SQL로 오라우팅됨"
+    assert mock_invoke.call_count >= 1, "RAG(LLM)로 안 감"

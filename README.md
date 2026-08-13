@@ -94,7 +94,7 @@ flowchart LR
 
 **답변 = 조회가 아니라 조립.** 특약·보통약관·별표에 흩어진 조각을 준용·강제첨부로 해소해 모으고, **완결성 게이트**가 필수 요소(면책 등) 누락을 검출한다. 보장판정이 지급률을 게이팅해 모순을 화해한다 — 예: *"D05는 암진단자금 미보장 → 제자리암 담보 10%"*.
 
-**상태**: 관계형 테이블 **실 DB 적재 완료**(product 41·clause 307·payout_rule 94/4상품). SQL 경로는 **`POST /payout` 엔드포인트로 서빙 중**([`payout_sql.py`](src/v1/rag/payout_sql.py) 골든 5/5 실 DB) — "얼마·언제"에 결정론 답, miss면 `matched=false`로 RAG 폴백. `/answer`는 미변경(사이드카). **남은 것 = /answer 자동 라우팅 통합**(질의 유형 감지 후 SQL/RAG 자동 분기, B5). 방법론은 [eval-and-golden.md](docs/eval-and-golden.md), 도메인은 [domain-model.md](docs/domain-model.md).
+**상태**: 관계형 테이블 **실 DB 적재 완료**(product 41·clause 307·payout_rule 94/4상품) + **3경로 라우팅 서빙 중**. `/answer`가 "얼마·지급률" 질의를 **자동으로 SQL 경로**로 보내 결정론 답(LLM 미호출, `route.strategy="sql"`)하고, 담보만 겹치는 "언제 지급·정의" 해석 질의는 RAG로 — amount 게이트 + 규칙 매칭 2중 안전(precision-first). 별도 `POST /payout` 사이드카도 제공. 로직 [`payout_sql.py`](src/v1/rag/payout_sql.py)(골든 5/5 실 DB). 방법론은 [eval-and-golden.md](docs/eval-and-golden.md), 도메인은 [domain-model.md](docs/domain-model.md).
 
 ## 평가 — 측정으로 자생하는 루프
 
