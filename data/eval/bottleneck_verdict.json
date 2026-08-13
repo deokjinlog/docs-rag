@@ -1,0 +1,41 @@
+{
+  "retrieval": {
+    "present": true,
+    "recall": {
+      "1": 0.76,
+      "3": 0.96,
+      "5": 1.0,
+      "10": 1.0
+    },
+    "mrr": 0.861,
+    "n": 25
+  },
+  "generation": {
+    "present": true,
+    "faithfulness": NaN,
+    "answer_relevancy": 0.6950699723126093,
+    "context_utilization": NaN,
+    "n": 10,
+    "judge": "vllm/Qwen3-4B-AWQ (self-judge, biased)",
+    "biased": true
+  },
+  "diagnosis": {
+    "verdict": "generation-leaning",
+    "confidence": "잠정",
+    "reason": "retrieval 충분(recall@5≥목표)이라 검색 병목은 배제되나, 생성측 지표가 nan/편향-judge라 확정 불가. 방향은 generation이지만 게이트는 아직 닫힘",
+    "gate": "BLOCKED",
+    "next": "eval_ragas를 **비편향 judge(OPENAI_API_KEY, GPT-4o-mini)**로 재측정해 faithfulness 확정 → 그 값이 목표 미달이면 Phase 2 개시",
+    "notes": [
+      "retrieval: recall@5=1.0 recall@3=0.96 MRR=0.861 (n=25) → 충분",
+      "generation: faithfulness=nan answer_relevancy=0.6950699723126093 judge=편향(self) (n=10) → 약함 신호: answer_relevancy=0.695<0.8",
+      "  ⚠ faithfulness=nan → 근거준수 미측정(생성측 핵심 신호 공백)",
+      "  ⚠ judge=self(serving과 동일) → self-preference bias, 값 신뢰 강등"
+    ]
+  },
+  "targets": {
+    "recall@5": 0.95,
+    "recall@3": 0.9,
+    "faithfulness": 0.8,
+    "answer_relevancy": 0.8
+  }
+}

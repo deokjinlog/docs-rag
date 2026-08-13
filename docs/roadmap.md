@@ -39,8 +39,14 @@ Phase 0 (측정 기반 구축, 선행 필수)
 | 축 | 현재 | 추가 | 목적 |
 |---|---|---|---|
 | RAGAS | Faithfulness / Answer Relevancy / Context Utilization | **Context Precision · Context Recall** | 검색 정밀도/재현율 분리 → retrieval vs generation 병목 분해 |
-| Retrieval | 보류 (Context Utilization proxy) | **Recall@k · MRR · nDCG@k** | 검색 품질 절대치. 파인튜닝 전/후 비교 기준선 |
-| 병목 분해 | 없음 | **retrieval-bound / generation-bound 판별식** | Context Recall 낮음 → retrieval / Context Recall 높은데 Faithfulness 낮음 → generation |
+| Retrieval | ✅ Recall@k·MRR (`eval_retrieval.py`, recall@5=1.0·MRR=0.86·n=25) | nDCG@k | 검색 품질 절대치. 파인튜닝 전/후 비교 기준선 |
+| 병목 분해 | ✅ **판별식 구현** (`diagnose_bottleneck.py`, `make diagnose`) | 도메인용어 쿼리 세분 recall | retrieval 충분+generation 약함 → generation-bound. 입력 품질(nan·편향 judge)까지 자가 채점 |
+
+**현재 판정(`make diagnose`, 2026-08-13)**: `generation-leaning (잠정)` — retrieval는 충분
+(recall@5=1.0 → 정답 청크가 top-k에 듦, 검색 병목 배제)하나, 저장된 RAGAS가 **faithfulness=nan +
+self-judge(편향)** 이라 생성측을 확정 못 함. **게이트 BLOCKED** → §1.3의 비편향 judge(GPT-4o-mini)로
+`eval_ragas` 재측정해 faithfulness를 확정해야 Phase 2 트리거가 열린다. 판정 근거는
+`data/eval/bottleneck_verdict.json` 에 보존(precision-first: nan/편향 데이터로 확정 판정을 지어내지 않음).
 
 ### 1.2 평가셋 — 코퍼스 마이닝으로 silver golden
 
@@ -64,7 +70,10 @@ Phase 0가 다음 분기를 만든다. **여기서 나온 숫자가 없으면 Ph
 | Context Recall / Recall@k 목표 미달, 특히 도메인 용어(특약·별표·조항 표기) 쿼리에서 baseline이 일반 쿼리보다 유의미하게 낮음 | **retrieval-bound** | → Phase 1 |
 | 검색 근거는 충분(Context Recall 높음)한데 Faithfulness / Answer Relevancy 낮음 + critic `generation_error` 비율 높음 | **generation-bound** | → Phase 2 |
 
-**구현 위치(예정)**: `scripts/eval_ragas.py` 지표 확장 · 신규 `scripts/eval_retrieval.py` · 신규 `scripts/build_eval_set.py`(reverse-QA 마이닝).
+**구현 위치**: ✅ `scripts/eval_retrieval.py`(recall@k·MRR) · ✅ `scripts/diagnose_bottleneck.py`(판별식,
+`make diagnose`) · (예정) `scripts/eval_ragas.py` Context Precision·Recall 확장 · (예정)
+`scripts/build_eval_set.py`(reverse-QA 마이닝). 판별식은 두 baseline(retrieval·ragas)만 읽어 스택
+없이 돌고, 입력 품질(nan·편향 judge)을 스스로 채점해 확정/잠정을 가른다.
 
 ---
 
@@ -158,3 +167,4 @@ precision/품질 임계는 README "검증되지 않은 영역"의 `semantic_judg
 ## 변경이력
 <!-- 로드맵 갱신 시 여기에 append (oldest first) -->
 - 2026-07-23 · 최초 작성 — 측정-먼저 3-Phase 로드맵(대조학습·LoRA·RAGAS 확장) 설계. 트리거 조건부 + 코퍼스 마이닝 데이터 전제.
+- 2026-08-13 · Phase 0 판별식 구현(`diagnose_bottleneck.py`, `make diagnose`) — retrieval·ragas baseline을 읽어 retrieval-bound/generation-bound 판정 + 입력 품질 자가 채점. 현재 `generation-leaning(잠정)`: retrieval 충분(recall@5=1.0)·검색 병목 배제, 그러나 RAGAS faithfulness=nan+self-judge라 게이트 BLOCKED → 비편향 judge 재측정이 트리거. "병목 분해=없음" 해소.

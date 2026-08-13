@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load \
+        eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
         mem watch recover lite ingest answer full
 
 
@@ -82,6 +82,9 @@ bench: ## 서빙 지연 벤치 — SQL 경로(ms) vs retrieve floor. 모드 자�
 
 bench-load: ## 부하·동시성 스윕 — SQL 경로 QPS·부하 하 지연(p50/p95/p99). data/bench/<날짜>/load.json
 	python3 scripts/bench.py --load --date $(shell date +%Y%m%d)
+
+diagnose: ## 병목 분해 — retrieval-bound vs generation-bound 판별식(파인튜닝 게이트, 스택 불필요)
+	python3 scripts/diagnose_bottleneck.py
 
 
 # ─── Infra / Health (로컬 8GB·WSL 안정성) ─────────────────────────────────
