@@ -54,6 +54,13 @@ class PayoutRequest(BaseModel):
     product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
 
 
+class TermsRequest(BaseModel):
+    """POST /terms 요청 body — 계약조건 SQL 경로(청약철회·갱신)."""
+    query: str = Field(..., examples=["중환자실 특약 청약철회 언제까지 가능한가요?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 

@@ -36,8 +36,9 @@ from .rag.search import (
 )
 from .rag.sibling import expand_siblings
 from .rag.tokens import calc_context_budget, count_tokens, truncate_context
-from .repository import DocumentRepository, FeedbackRepository, PayoutRepository
+from .repository import DocumentRepository, FeedbackRepository, PayoutRepository, ProductRepository
 from .rag.payout_sql import select_payout, format_payout_complete, is_payout_amount_query
+from .rag.terms_sql import is_terms_query, coverage_hint, format_terms
 from .schemas import (
     AnswerRequest,
     DocumentCreate,
@@ -46,6 +47,7 @@ from .schemas import (
     FeedbackResponse,
     PayoutRequest,
     RetrieveRequest,
+    TermsRequest,
 )
 from .utils import embed_texts
 
@@ -288,6 +290,28 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                         }],
                     }
 
+            # SQL 경로 — 계약조건("언제까지?": 청약철회·갱신). terms 게이트 + 담보 키워드로 상품
+            # 해소되면 결정론(준용 NULL 포함), 아니면 RAG. amount(payout)와 배타.
+            if SQL_ROUTE_ENABLED and is_terms_query(body.query):
+                # document_id(R01)는 product_id(LINA_ICU)가 아니라 담보 키워드로만 상품 해소
+                _hint = coverage_hint(body.query)
+                _product = ProductRepository(db).get_terms(None, _hint) if _hint else None
+                if _product is not None:
+                    _tanswer = format_terms(_product)
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로(terms) 적중: {_product.get('product_id')}")
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": _tanswer,
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{"claim": _tanswer,
+                                       "refs": [_product.get("product_id")],
+                                       "supported_by_chunks": []}],
+                    }
+
             query_filter = build_filter(
                 service_code=body.service_code,
                 document_id=body.document_id,
@@ -528,6 +552,24 @@ def payout(body: PayoutRequest, db: Session = Depends(get_db)):
         "answer": format_payout_complete(rule, exclusions),
         "rule": rule,           # 근거: 매칭된 payout_rule row. miss면 null
         "exclusions": exclusions,  # 강제첨부된 면책 조 [{jo, title}]
+    }
+
+
+@router.post("/terms", summary="결정론 계약조건 질의 (SQL 경로)", tags=["Retrieval"])
+def terms(body: TermsRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "언제까지?"(청약철회·갱신)를 product에서 결정론으로.
+
+    **준용 NULL 철학**: 특약은 청약철회 NULL이 정답(보통약관 준용 소관) — 억지 값 대신
+    "주계약 준용 소관, 확인 필요". 상품 미해소면 matched=false→RAG. 로직 `rag/terms_sql.py`.
+    """
+    _apply_input_guard(body)
+    product = ProductRepository(db).get_terms(body.product_id, coverage_hint(body.query))
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": product is not None,
+        "answer": format_terms(product),
+        "product": product,   # 근거 (is_renewable·cooling_off_days·resolution_note). miss면 null
     }
 
 

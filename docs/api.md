@@ -13,6 +13,7 @@ Base URL: `/api/v1/docs-rag`
 | POST | `/retrieve` | 벡터 검색 | O |
 | POST | `/answer` | RAG 질의응답 | 준멱등 (*) |
 | POST | `/payout` | 결정론 지급 질의 (SQL 경로) | O |
+| POST | `/terms` | 결정론 계약조건 질의 (청약철회·갱신) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -332,7 +333,41 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 6. POST /embeddings
+## 6. POST /terms
+
+**결정론 계약조건 경로** — "언제까지?"(청약철회·갱신)를 `product`에서 결정론으로. **준용 NULL 철학**: 특약은 청약철회가 NULL이 정답(보통약관 준용 소관) — 억지 값 대신 *"제19조 준용 소관, 주계약 미확보로 확인 필요"*(precision-first, "확신에 찬 오답" 0). 상품 미해소(담보 키워드 없음)면 `matched=false`→RAG. 로직 [`rag/terms_sql.py`](../src/v1/rag/terms_sql.py), 데이터 `product`(`load_terms.py --load`).
+
+### Request
+
+```json
+{ "query": "중환자실 특약 청약철회 언제까지 가능한가요?", "service_code": "01", "product_id": "LINA_ICU_2024" }
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| query | string | O | 계약조건 질의 (청약철회·갱신·만기) |
+| product_id | string | X | 특정 상품 한정. 미지정 시 query의 담보 키워드로 해소 |
+
+### Response (200)
+
+```json
+{
+  "query": "중환자실 특약 청약철회 언제까지?",
+  "route": "sql",
+  "matched": true,
+  "answer": "갱신형 · 청약철회: 제19조 준용 소관 — 주계약 미확보로 확인 필요",
+  "product": {"product_id": "LINA_ICU_2024", "is_renewable": true, "cooling_off_days": null, "resolution_note": "…준용(제19조) 소관…"}
+}
+```
+
+| 필드 | 조건 | 설명 |
+|------|------|------|
+| answer | 항상 | 갱신 여부 + 청약철회(실값 "N일 이내" 또는 특약이면 **준용 소관 확인 필요**). miss면 `"…찾지 못했습니다(→RAG)."` |
+| product | matched=true일 때만 | 근거 (is_renewable·cooling_off_days·resolution_note) |
+
+---
+
+## 7. POST /embeddings
 
 텍스트를 BGE-M3 벡터로 변환한다. 디버깅/테스트용.
 
@@ -370,7 +405,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ---
 
-## 7. POST /feedback
+## 8. POST /feedback
 
 `/answer` · `/retrieve`의 응답에 포함된 `trace_id`를 받아 사용자 피드백을 수집한다. 서빙 trace JSONL과 `trace_id`로 조인해서 품질 신호로 사용. 엔드포인트는 서빙 경로와 **완전히 분리** — 실패해도 `/answer`에 영향 없음.
 
@@ -513,4 +548,4 @@ query 내용에 따라 자동 분류:
 | comparison | Dense heavy (x8/x3) | 비교표 | "1종과 2종 차이" |
 | simple_fact | Hybrid (x6/x6) | 간결 답변 | "보험금 지급 기준" |
 
-**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 "얼마·지급률" 같은 **결정론 지급값 질의**를 감지하면 `payout_rule`에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). amount 게이트(`is_payout_amount_query` — "얼마/금액/지급률/감액"만, 담보만 겹치는 "언제 지급/정의" 해석은 제외) + 규칙 매칭이 **둘 다** 성립할 때만 발동하고, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).
+**SQL 자동 라우팅 (3경로 중 SQL 경로)**: 위 RAG 분류 전에, `/answer`는 결정론 질의를 감지하면 관계형 테이블에서 값을 집어와 LLM 없이 답한다(응답 `route.strategy="sql"`). 두 갈래 — ①**"얼마·지급률"**(amount 게이트 `is_payout_amount_query`)→`payout_rule`(+면책 강제첨부), ②**"언제까지·청약철회·갱신"**(terms 게이트 `is_terms_query` + 담보 키워드로 상품 해소)→`product`(준용 NULL 포함). 게이트 + 매칭이 **둘 다** 성립할 때만 발동, 아니면 위 RAG 경로 그대로(precision-first 2중 안전). `SQL_ROUTE_ENABLED=false`로 끌 수 있다. 결정론 계층 상세는 [domain-model.md](domain-model.md)·[eval-and-golden.md](eval-and-golden.md).

@@ -387,3 +387,27 @@ class PayoutRepository:
         )
         rows = self.db.execute(text(sql), {"pid": product_id}).mappings()
         return [dict(r) for r in rows]
+
+
+class ProductRepository:
+    """product 읽기 (관계형 SQL 경로 — 계약조건 terms). raw SQL(ORM 밖)."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_terms(self, product_id: str | None = None, coverage_kw: str | None = None) -> dict | None:
+        """계약조건(청약철회·갱신)용 product row 1건. product_id 우선, 없으면 담보 키워드로
+        base 상품(parent_policy_id IS NULL) 해소. 못 찾으면 None(→RAG)."""
+        from sqlalchemy import text
+        cols = "product_id, product_name, is_renewable, cooling_off_days, resolution_note"
+        if product_id:
+            sql = f"SELECT {cols} FROM product WHERE product_id = :pid LIMIT 1"
+            row = self.db.execute(text(sql), {"pid": product_id}).mappings().first()
+        elif coverage_kw:
+            sql = (f"SELECT {cols} FROM product "
+                   "WHERE parent_policy_id IS NULL AND (product_name LIKE :kw OR coverage_name LIKE :kw) "
+                   "LIMIT 1")
+            row = self.db.execute(text(sql), {"kw": f"%{coverage_kw}%"}).mappings().first()
+        else:
+            return None
+        return dict(row) if row else None
