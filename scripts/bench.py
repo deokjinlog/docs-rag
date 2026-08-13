@@ -9,12 +9,18 @@
 
 결과는 data/bench/<날짜>/results.json 에 보존(측정-먼저). 날짜는 --date 로 주입(스크립트가
 시계를 직접 안 읽음 → 재현 가능).
-용법: python3 scripts/bench.py --date 20260813 [--n 20]
+
+용법:
+  python3 scripts/bench.py --date 20260813 [--n 20]              # 단일요청 지연
+  python3 scripts/bench.py --load --date 20260813 [--dur 3]      # 부하·동시성 스윕(QPS·부하 하 지연)
+                          [--path /payout] [--levels 1,2,4,8,16,32]
+--load는 SQL 경로에 동시성을 걸어 처리량(QPS)과 부하 하 지연 꼬리를 잰다 → data/bench/<날짜>/load.json.
 """
 import os
 import sys
 import json
 import time
+import threading
 import subprocess
 import statistics
 import urllib.request
@@ -95,7 +101,89 @@ def _measure(path: str, body: dict, n: int, timeout: int) -> dict:
     }
 
 
+def _pct(sorted_lat: list, q: float):
+    if not sorted_lat:
+        return None
+    return round(sorted_lat[min(len(sorted_lat) - 1, int(len(sorted_lat) * q))], 1)
+
+
+def _load_level(path: str, body: dict, concurrency: int, duration_s: float, timeout: int) -> dict:
+    """닫힌-루프(closed-loop) 부하 — concurrency개 스레드가 마감까지 요청을 연속 발사.
+
+    처리량(QPS=성공/벽시간)과 **부하 하** 지연분포를 낸다. 단일요청 지연(_measure)과 달리
+    동시성이 커질 때 지연이 어떻게 벌어지는지(꼬리)와 포화점을 드러낸다.
+    """
+    lat, counts, lock = [], {"ok": 0, "err": 0}, threading.Lock()
+    deadline = time.monotonic() + duration_s
+
+    def worker():
+        local, ok, err = [], 0, 0
+        while time.monotonic() < deadline:
+            ms, st = _post(path, body, timeout)
+            if st == 200:
+                ok += 1
+                local.append(ms)
+            else:
+                err += 1
+        with lock:
+            lat.extend(local)
+            counts["ok"] += ok
+            counts["err"] += err
+
+    t0 = time.monotonic()
+    threads = [threading.Thread(target=worker) for _ in range(concurrency)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    wall = time.monotonic() - t0
+    lat.sort()
+    return {
+        "concurrency": concurrency,
+        "ok": counts["ok"], "err": counts["err"],
+        "qps": round(counts["ok"] / wall, 1) if wall > 0 else 0,
+        "p50_ms": _pct(lat, 0.50), "p95_ms": _pct(lat, 0.95), "p99_ms": _pct(lat, 0.99),
+        "wall_s": round(wall, 2),
+    }
+
+
+def load_main():
+    """부하·동시성 스윕 — SQL 경로가 동시성에서 얼마나 버티나(QPS·부하 하 지연 꼬리)."""
+    date = _arg("--date", None)
+    if not date:
+        print("ERROR: --date YYYYMMDD 필요", file=sys.stderr)
+        sys.exit(2)
+    path = _arg("--path", "/payout")   # 기본 = 가장 무거운 SQL(payout_rule + 면책 강제첨부 JOIN)
+    dur = float(_arg("--dur", "3"))
+    levels = [int(x) for x in _arg("--levels", "1,2,4,8,16,32").split(",")]
+    body = {"query": "중환자실 입원하면 하루 얼마 받아요?", "service_code": "01"}
+
+    mode = _detect_mode()
+    print(f"[부하·동시성 벤치 · {path} · 레벨당 {dur}s · API={API}]")
+    print(f"  모드: 임베더·리랭커={mode['embed_rerank_device']} (SQL 경로는 순수 Postgres — GPU 무관)")
+    print(f"{'동시성':>6}{'QPS':>10}{'p50':>9}{'p95':>9}{'p99':>9}{'err':>7}  (ms)")
+    print("-" * 58)
+    rows = []
+    for c in levels:
+        r = _load_level(path, body, c, dur, timeout=30)
+        rows.append(r)
+        print(f"{c:>6}{r['qps']:>10}{r['p50_ms']:>9}{r['p95_ms']:>9}{r['p99_ms']:>9}{r['err']:>7}")
+    print("-" * 58)
+    peak = max(rows, key=lambda r: r["qps"])
+    print(f"피크 처리량 ≈ {peak['qps']} QPS @ 동시성 {peak['concurrency']} "
+          f"(p95 {peak['p95_ms']}ms) — 결정론 SQL 계층의 단일-노드 처리량")
+
+    out_dir = os.path.join(HERE, "..", "data", "bench", date)
+    os.makedirs(out_dir, exist_ok=True)
+    out = {"date": date, "api": API, "path": path, "duration_s": dur, "mode": mode, "levels": rows}
+    with open(os.path.join(out_dir, "load.json"), "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+    print(f"→ 저장: data/bench/{date}/load.json")
+
+
 def main():
+    if "--load" in sys.argv:
+        return load_main()
     n = int(_arg("--n", "20"))
     n_rag = int(_arg("--n-rag", "5"))   # retrieve는 CPU모드서 초 단위 → 반복 분리(낭비 방지)
     date = _arg("--date", None)

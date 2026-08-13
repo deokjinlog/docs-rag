@@ -1,0 +1,72 @@
+{
+  "date": "20260813",
+  "api": "http://localhost:8002/api/v1/docs-rag",
+  "path": "/payout",
+  "duration_s": 3.0,
+  "mode": {
+    "embed_rerank_device": "cpu",
+    "vllm_up": false
+  },
+  "levels": [
+    {
+      "concurrency": 1,
+      "ok": 339,
+      "err": 0,
+      "qps": 112.8,
+      "p50_ms": 7.8,
+      "p95_ms": 10.6,
+      "p99_ms": 14.1,
+      "wall_s": 3.01
+    },
+    {
+      "concurrency": 2,
+      "ok": 524,
+      "err": 0,
+      "qps": 173.9,
+      "p50_ms": 10.5,
+      "p95_ms": 16.6,
+      "p99_ms": 27.6,
+      "wall_s": 3.01
+    },
+    {
+      "concurrency": 4,
+      "ok": 536,
+      "err": 0,
+      "qps": 178.0,
+      "p50_ms": 21.7,
+      "p95_ms": 29.6,
+      "p99_ms": 35.3,
+      "wall_s": 3.01
+    },
+    {
+      "concurrency": 8,
+      "ok": 555,
+      "err": 0,
+      "qps": 183.1,
+      "p50_ms": 42.6,
+      "p95_ms": 60.1,
+      "p99_ms": 69.9,
+      "wall_s": 3.03
+    },
+    {
+      "concurrency": 16,
+      "ok": 528,
+      "err": 0,
+      "qps": 172.3,
+      "p50_ms": 90.0,
+      "p95_ms": 118.2,
+      "p99_ms": 130.7,
+      "wall_s": 3.06
+    },
+    {
+      "concurrency": 32,
+      "ok": 561,
+      "err": 0,
+      "qps": 178.9,
+      "p50_ms": 172.1,
+      "p95_ms": 243.2,
+      "p99_ms": 266.8,
+      "wall_s": 3.14
+    }
+  ]
+}

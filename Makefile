@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench \
+        eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load \
         mem watch recover lite ingest answer full
 
 
@@ -79,6 +79,9 @@ eval-index: ## Qdrant 벡터 공간 헬스 (Dispersion + Confusion Rate)
 
 bench: ## 서빙 지연 벤치 — SQL 경로(ms) vs retrieve floor. 모드 자동기록. data/bench/<날짜>/ 보존
 	python3 scripts/bench.py --date $(shell date +%Y%m%d)
+
+bench-load: ## 부하·동시성 스윕 — SQL 경로 QPS·부하 하 지연(p50/p95/p99). data/bench/<날짜>/load.json
+	python3 scripts/bench.py --load --date $(shell date +%Y%m%d)
 
 
 # ─── Infra / Health (로컬 8GB·WSL 안정성) ─────────────────────────────────
