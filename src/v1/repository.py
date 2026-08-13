@@ -336,3 +336,37 @@ class FeedbackRepository:
         self.db.flush()    # id 채번
         self.db.refresh(fb)  # created_at 채번 (server_default)
         return fb
+
+
+# 관계형 SQL 경로 (schema_insurance.sql — ORM 모델 밖, raw SQL 읽기)
+class PayoutRepository:
+    """payout_rule 읽기 (SQL 경로 B5). 관계형 스키마는 ORM(models.py) 밖이라 raw SQL SELECT.
+
+    읽기 전용 — 적재는 `scripts/load_payout.py`. rows는 `rag/payout_sql.select_payout`에
+    주입돼 결정론 답변에 쓰인다.
+    """
+
+    _COLS = (
+        "product_id", "coverage", "cause", "age_band", "period_bucket",
+        "rate_pct", "per_unit", "limit_days",
+        "reduction_rate_pct", "reduction_period", "reduction_cause", "source",
+    )
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_rules(self, product_id: str | None = None) -> list[dict]:
+        """payout_rule 전체(또는 상품 필터) → dict 리스트. rate_pct(Decimal)는 int로 정규화."""
+        from sqlalchemy import text
+        sql = f"SELECT {', '.join(self._COLS)} FROM payout_rule"
+        params: dict = {}
+        if product_id:
+            sql += " WHERE product_id = :pid"
+            params["pid"] = product_id
+        out = []
+        for row in self.db.execute(text(sql), params).mappings():
+            d = dict(row)
+            if d.get("rate_pct") is not None:
+                d["rate_pct"] = int(d["rate_pct"])   # Decimal → int (골든 정수 비교 일관)
+            out.append(d)
+        return out
