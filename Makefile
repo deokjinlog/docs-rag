@@ -56,6 +56,9 @@ chunk-quality: ## RAG 청크 전처리 완성도 게이트 (br·img·page·점�
 eval-routing: ## 라우팅 골든 — 5-type 분류기 정확도 (순수 정규식, 스택 불필요. --update-baseline)
 	python3 scripts/eval_routing.py
 
+eval-sql-routing: ## SQL 3경로 라우팅 골든 — payout/terms/coverage vs RAG (스택 필요, /answer 호출. --update-baseline)
+	python3 scripts/eval_sql_routing.py
+
 feedback-submit: ## (producer, eval_ragas.py --submit-feedback) RAGAS Faithfulness → signal 매핑·DB 적재
 	uv run python scripts/eval_ragas.py --submit-feedback
 

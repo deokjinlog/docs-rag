@@ -81,6 +81,7 @@
 - `scripts/gate.py` — 전처리 품질 게이트(한글비율·조 1..N·조 개수·조 길이·별표 해소), FAIL 문서는 gold 진입 차단 (로드맵 A2)
 - `scripts/check.py` (`make check`) — CI 게이트: 전 골든 9종 + 전처리 게이트 한 번에, 회귀 시 exit 1 → 배포/머지 차단 (로드맵 C7)
 - `scripts/eval_retrieval.py` (`make eval-retrieval`) — **검색 골든셋(recall@k · MRR)**, 골든 `golden_retrieval.jsonl` 12문항. recall@1=0.83 · @3/@5=1.00 · MRR=0.92 (라이나 간병인 R04 54청크; 청킹 heading 복구 + 리랭커 heading 입력으로 0.58/0.75→개선). 검색은 스택 필요 → **make check와 분리**(로드맵 A4, §9)
+- `scripts/eval_sql_routing.py` (`make eval-sql-routing`) — **SQL 3경로 라우팅 골든**, `golden_sql_routing.jsonl` 14문항(payout/terms/coverage/RAG). /answer의 결정론 라우팅을 검증: SQL-예상은 `route.strategy=="sql"`, RAG-예상은 route≠sql(오라우팅 방지). 게이트가 3개로 늘어 상호작용 회귀가 실질 위험이라 measured 게이트로 고정(accuracy 1.0, `routing_sql_baseline.json`). 스택 필요(vLLM 없으면 RAG-예상은 15s 타임아웃→'→RAG'로 판정=정답). **골든이 결함 검출**: 담보 없는 "감액되나요?"는 amount 게이트는 켜지나 select_payout miss→RAG(precision-first 2중 안전)라, 골든을 담보 포함으로 교정
 
 **로드맵:**
 | # | 할 일 | 성격 |
