@@ -364,8 +364,8 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 | 필드 | 조건 | 설명 |
 |------|------|------|
-| answer | 항상 | 갱신 여부 + 청약철회(실값 "N일 이내" 또는 특약이면 **준용 소관 확인 필요**). miss면 `"…찾지 못했습니다(→RAG)."` |
-| product | matched=true일 때만 | 근거 (is_renewable·cooling_off_days·resolution_note) |
+| answer | 항상 | 갱신 여부(+주기)·만기·청약철회(실값 "N일 이내" 또는 특약이면 **준용 소관 확인 필요**). 예: "갱신형(10년 주기) · 10년 만기 · 청약철회 15일 이내". miss면 `"…(→RAG)."` |
+| product | matched=true일 때만 | 근거 (is_renewable·renewal_cycle_years·term_years·cooling_off_days·resolution_note) |
 
 ---
 

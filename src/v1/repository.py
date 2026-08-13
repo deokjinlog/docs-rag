@@ -399,7 +399,8 @@ class ProductRepository:
         """계약조건(청약철회·갱신)용 product row 1건. product_id 우선, 없으면 담보 키워드로
         base 상품(parent_policy_id IS NULL) 해소. 못 찾으면 None(→RAG)."""
         from sqlalchemy import text
-        cols = "product_id, product_name, is_renewable, cooling_off_days, resolution_note"
+        cols = ("product_id, product_name, is_renewable, cooling_off_days, "
+                "renewal_cycle_years, term_years, resolution_note")
         if product_id:
             sql = f"SELECT {cols} FROM product WHERE product_id = :pid LIMIT 1"
             row = self.db.execute(text(sql), {"pid": product_id}).mappings().first()

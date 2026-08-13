@@ -47,10 +47,12 @@ def main():
         # is_renewable/resolution_note는 기존 값 있으면 유지(COALESCE) — extract_product 적재분 보존
         cur.execute(
             "UPDATE product SET cooling_off_days = %s, "
+            "renewal_cycle_years = %s, term_years = %s, "
             "is_renewable = COALESCE(is_renewable, %s), "
             "resolution_note = COALESCE(NULLIF(resolution_note, ''), %s) "
             "WHERE product_id = %s",
-            (t["cooling_off_days"], t["is_renewable"], t["resolution_note"], pid),
+            (t["cooling_off_days"], t["renewal_cycle_years"], t["term_years"],
+             t["is_renewable"], t["resolution_note"], pid),
         )
     conn.commit()
     conn.close()

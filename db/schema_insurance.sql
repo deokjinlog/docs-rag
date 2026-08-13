@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS product (
     -- 고정 사실 필드 (없으면 NULL — 아래 resolution_note로 '왜 NULL'을 명시)
     waiting_period_days INT,                  -- 면책/대기기간
     cooling_off_days    INT,                  -- 청약철회
+    renewal_cycle_years INT,                  -- 갱신 주기 (N년마다 갱신)
+    term_years          INT,                  -- 보험기간(만기)
     -- 주계약 관계 (특약은 주계약 준용 → 미확보 시 NULL)
     parent_policy_id  TEXT,
     resolution_note   TEXT,                   -- NULL 필드가 왜 NULL인지 (주계약 소관 등)

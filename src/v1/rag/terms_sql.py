@@ -42,10 +42,14 @@ def format_terms(product: dict | None) -> str:
         return "관련 계약조건을 찾지 못했습니다(→RAG)."
     parts = []
     renew = product.get("is_renewable")
+    cycle = product.get("renewal_cycle_years")
     if renew is True:
-        parts.append("갱신형")
+        parts.append(f"갱신형({cycle}년 주기)" if cycle else "갱신형")
     elif renew is False:
         parts.append("비갱신")
+    term = product.get("term_years")
+    if term:
+        parts.append(f"{term}년 만기")
     cool = product.get("cooling_off_days")
     if cool:
         parts.append(f"청약철회 {cool}일 이내")

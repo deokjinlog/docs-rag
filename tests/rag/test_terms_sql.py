@@ -24,6 +24,15 @@ def test_format_terms_deterministic_value():
     assert "갱신형" in out and "15일 이내" in out
 
 
+def test_format_terms_includes_cycle_and_term():
+    """갱신주기·만기 있으면 노출 — '갱신형(10년 주기) · 10년 만기'."""
+    out = format_terms({
+        "is_renewable": True, "renewal_cycle_years": 10, "term_years": 10,
+        "cooling_off_days": 15, "resolution_note": None,
+    })
+    assert "10년 주기" in out and "10년 만기" in out and "15일 이내" in out
+
+
 def test_format_terms_junyong_null_is_honest():
     """특약 청약철회 NULL — 억지 값 대신 '준용 소관 확인 필요'(precision-first)."""
     out = format_terms({
