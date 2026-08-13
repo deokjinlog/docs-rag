@@ -1,0 +1,66 @@
+{
+  "n": 20,
+  "n_rag": 5,
+  "date": "20260813",
+  "api": "http://localhost:8002/api/v1/docs-rag",
+  "mode": {
+    "embed_rerank_device": "cpu",
+    "vllm_up": false
+  },
+  "results": {
+    "payout   (SQL)": {
+      "n": 20,
+      "p50_ms": 8.9,
+      "p95_ms": 240.6,
+      "mean_ms": 21.4,
+      "min_ms": 4.3,
+      "path": "/payout",
+      "kind": "sql"
+    },
+    "terms    (SQL)": {
+      "n": 20,
+      "p50_ms": 4.6,
+      "p95_ms": 14.3,
+      "mean_ms": 5.2,
+      "min_ms": 3.6,
+      "path": "/terms",
+      "kind": "sql"
+    },
+    "coverage (SQL)": {
+      "n": 20,
+      "p50_ms": 6.4,
+      "p95_ms": 13.6,
+      "mean_ms": 6.7,
+      "min_ms": 4.5,
+      "path": "/coverage",
+      "kind": "sql"
+    },
+    "exclusion(SQL)": {
+      "n": 20,
+      "p50_ms": 5.4,
+      "p95_ms": 8.1,
+      "mean_ms": 5.6,
+      "min_ms": 4.5,
+      "path": "/exclusion",
+      "kind": "sql"
+    },
+    "answer→SQL": {
+      "n": 20,
+      "p50_ms": 9.8,
+      "p95_ms": 17.1,
+      "mean_ms": 9.6,
+      "min_ms": 6.1,
+      "path": "/answer",
+      "kind": "sql"
+    },
+    "retrieve(검색+rerank)": {
+      "n": 5,
+      "p50_ms": 15699.4,
+      "p95_ms": 19159.9,
+      "mean_ms": 16248.5,
+      "min_ms": 15104.1,
+      "path": "/retrieve",
+      "kind": "rag"
+    }
+  }
+}

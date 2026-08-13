@@ -105,6 +105,7 @@ flowchart LR
 | 검색 품질 | recall@k · MRR (원문 앵커 라벨, 재청킹 무관) | **recall@5/@10=1.0 · @3=0.96 · @1=0.76 · MRR=0.86** (25문항·5문서) |
 | 결정론 SQL | payout QA (지급률·한도) | **5/5** (실 DB payout_rule) |
 | 추출·조립 | 파싱·payout·면책·완결성·reconcile 등 | **골든 10종 green** (`make check`) |
+| 서빙 지연 | SQL 경로 p50 vs retrieve floor ([bench](docs/latency-bench.md)) | **SQL 경로 p50 ~6ms** (임베더·리랭커·LLM 미사용 → GPU 유무 무관), retrieve floor는 모델 종속(GPU-warm sub-초) |
 | 생성 품질 | RAGAS Faithfulness · Answer Relevancy | `eval_ragas.py` (Faithfulness는 대형 GPU 전제) |
 
 > **측정이 병목을 특정하고 → 수정을 검증한다.** 예: 청킹 heading만 고쳤을 땐 recall이 안 움직였는데, 측정이 진짜 레버(리랭커 입력=임베딩 텍스트 일관성)를 가리켜 `recall@1 0.58→0.83`. 복합약관에선 조 제목을 `- 제N조(제목)` 소괄호 리스트로 뱉어 조가 붕괴하던 것을 승격 규칙으로 해소. 실측 기록은 [eval-and-golden.md §9](docs/eval-and-golden.md)·[설계 회고](docs/design-retrospective.md).
@@ -130,6 +131,6 @@ flowchart LR
 
 ## 문서
 
-[architecture](docs/architecture.md) · [domain-model](docs/domain-model.md) · [eval-and-golden](docs/eval-and-golden.md) · [data-staging](docs/data-staging.md) · [pipeline](docs/pipeline.md) · [chunking](docs/chunking.md) · [design-retrospective](docs/design-retrospective.md) · [roadmap](docs/roadmap.md) · [CLAUDE.md](CLAUDE.md)
+[architecture](docs/architecture.md) · [domain-model](docs/domain-model.md) · [eval-and-golden](docs/eval-and-golden.md) · [latency-bench](docs/latency-bench.md) · [data-staging](docs/data-staging.md) · [pipeline](docs/pipeline.md) · [chunking](docs/chunking.md) · [design-retrospective](docs/design-retrospective.md) · [roadmap](docs/roadmap.md) · [CLAUDE.md](CLAUDE.md)
 
 > 개발: `docker compose up -d` 후 `uv run pytest tests/ -v`(integration 마크는 host에서 자동 skip). 새 검증 컴포넌트는 **precision 측정 후에만** 메인 경로에.

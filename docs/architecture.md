@@ -93,7 +93,7 @@ POST /answer   → 쿼리 라우팅 → CRAG 루프 → 프롬프트 분기 → 
 
 ## 성능 특성
 
-하드웨어/문서량/쿼리 복잡도에 따라 수치가 크게 달라지므로 구체적 latency는 docs에 박지 않는다. 실측은 아래 도구로 얻고, 결과는 `data/bench/<날짜>/` 아래 보존된다.
+하드웨어/문서량/쿼리 복잡도에 따라 수치가 크게 달라지므로 구체적 latency는 docs에 박지 않는다. 실측은 아래 도구로 얻고, 결과는 `data/bench/<날짜>/` 아래 보존된다. 서빙 지연(SQL 경로 vs retrieve floor)의 실측·해석은 [latency-bench.md](latency-bench.md) — **SQL 경로는 임베더·리랭커·LLM을 안 써 GPU 유무와 무관하게 한 자릿수 ms**임을 보인다.
 
 ### 서빙 경로 (/retrieve, /answer)
 
@@ -114,6 +114,7 @@ POST /answer   → 쿼리 라우팅 → CRAG 루프 → 프롬프트 분기 → 
 
 | 도구 | 측정 대상 |
 |------|----------|
+| `scripts/bench.py` (`make bench`) | 서빙 지연 — SQL 경로 4종·SQL-라우팅 `/answer`·`/retrieve` p50/p95 (모드 자동기록: 임베더·리랭커 device·vLLM 유무). `data/bench/<날짜>/results.json` 보존 |
 | `scripts/trace_summary.py` | 서빙 경로 trace 12-섹션 집계 (route / decomposition / rerank / CRAG / verification(+groundedness) / provenance / latency / errors / critic / input_guard / output_guard) |
 | `scripts/smoke_test.py` | 관측 DoD 11-step 자동 검증 (endpoint + trace schema + aggregation) |
 | `scripts/eval_ragas.py` | Faithfulness / Answer Relevancy / Context Utilization + 질문별 응답 시간 (Judge=GPT-4o-mini, Serving=vLLM/Qwen3 분리 — self-preference bias 회피) |
