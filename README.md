@@ -133,4 +133,6 @@ flowchart LR
 
 [architecture](docs/architecture.md) · [domain-model](docs/domain-model.md) · [eval-and-golden](docs/eval-and-golden.md) · [latency-bench](docs/latency-bench.md) · [data-staging](docs/data-staging.md) · [pipeline](docs/pipeline.md) · [chunking](docs/chunking.md) · [design-retrospective](docs/design-retrospective.md) · [roadmap](docs/roadmap.md) · [CLAUDE.md](CLAUDE.md)
 
+> **한눈에 보기** — [docs/portfolio.html](docs/portfolio.html): 3경로 아키텍처 + 실측 스코어보드 한 장 요약(자기완결 HTML, 브라우저에서 열기 / GitHub Pages 배포 가능). 라이트·다크 테마 대응.
+
 > 개발: `docker compose up -d` 후 `uv run pytest tests/ -v`(integration 마크는 host에서 자동 skip). 새 검증 컴포넌트는 **precision 측정 후에만** 메인 경로에.
