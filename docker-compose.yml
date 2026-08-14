@@ -92,6 +92,10 @@ services:
     build: ./odl
     container_name: docs-rag-odl
     mem_limit: 3g          # Java docling(대형 PDF) 피크 방어
+    environment:
+      # 대형 PDF(700p+) Java 힙 OOM 방어 — 기본힙(~0.75g)이 700~1200p 약관에서 터짐.
+      # 3g 컨테이너 캡(누수방어) 안에서 힙 2g(비힙·OS용 ~1g 여유). Dockerfile ENV override.
+      - JAVA_TOOL_OPTIONS=-Xmx2g -Djava.util.logging.ConsoleHandler.level=WARNING
     ports:
       - "5002:5002"
     volumes:
