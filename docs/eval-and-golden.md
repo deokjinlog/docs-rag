@@ -64,7 +64,7 @@
 
 **구현됨:**
 - `scripts/parse_clauses.py` — 1..N 연속 검증(구조 게이트)
-- `scripts/parse_golden.py` — 파싱 골든셋(조 수·조 제목·**구조무결성** 정답 대조), 골든 `golden_parse.jsonl` **39/39** — 게이트(sanity)와 별개로 파싱 순증/회귀 판정. **파싱 안정도 심화**(12→39): ①`structure` 필드 5문서(조 1..N 연속·무중복·무빈제목을 골든 수준에서 잠금 = gate.py sanity 승격, 조용한 빈/깨진 파싱 차단) ②**특수문자 정의 제목**(”입원”·「간병인」 곡선따옴표·중점∙·치아우식증(충치)) + **경계 조**(부활(효력회복)·특별부활·납입최고(독촉)·준용)를 파서 실제출력 verbatim으로 잠금 — 미래 파서 변경이 이 취약 지점을 소리 없이 깨면 골든이 잡음 ③골든 미커버였던 **라이나_간병인 신규 커버**(5문서 전량). 특수문자·경계 제목 락은 `labeler:parse-lock`(사람 원문라벨과 구분). 구조 판정 로직은 유닛테스트 `tests/eval/test_parse_structure.py`(gap·dup·blank·empty 감지 7종)로 못박음
+- `scripts/parse_golden.py` — 파싱 골든셋(조 수·조 제목·**구조무결성** 정답 대조), 골든 `golden_parse.jsonl` **50/50** — 게이트(sanity)와 별개로 파싱 순증/회귀 판정. **파싱 안정도 심화**(12→50): ①`structure` 필드 5문서(조 1..N 연속·무중복·무빈제목을 골든 수준에서 잠금 = gate.py sanity 승격, 조용한 빈/깨진 파싱 차단) ②**특수문자 정의 제목**(”입원”·「간병인」 곡선따옴표·중점∙·치아우식증(충치)) + **경계 조**(부활(효력회복)·특별부활·납입최고(독촉)·준용)를 파서 실제출력 verbatim으로 잠금 — 미래 파서 변경이 이 취약 지점을 소리 없이 깨면 골든이 잡음 ③골든 미커버였던 **라이나_간병인 신규 커버**(5문서 전량) ④**항/호/목 세분**(`parse_subitems`) count 잠금 11(제8조 항14·제9조 면책 호3·제2조 정의 목12·제15조 항5·호4·목3 등) — "제5조 3항 2호" 정밀 인용 기반. 특수문자·경계·세분 락은 `labeler:parse-lock`(사람 원문라벨과 구분). 로직은 유닛테스트 `test_parse_structure.py`(gap·dup·blank·empty 7종)·`test_subitems.py`(순차검증·오탐거부·중첩 8종)로 못박음
 - `scripts/validate_extraction.py` — precision 게이트 프로토(원문 대조)
 - `scripts/golden_eval.py` — 골든 채점(필드별 precision/recall, `_norm` 정규화)
 - `data/eval/golden.jsonl` — SQL 추출 골든셋(담보명·계약유형·면책기간, evidence 포함)

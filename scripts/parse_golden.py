@@ -22,6 +22,9 @@ def _load(name):
 
 
 st = _load("stage")
+pc = _load("parse_clauses")
+
+_SUBITEM_RE = re.compile(r"(hang|ho|mok)_count@(\d+)")
 
 
 def _structure(clauses) -> str:
@@ -51,6 +54,14 @@ def predict(doc: str, field: str):
         return len(clauses)
     if field == "structure":
         return _structure(clauses)
+    m = _SUBITEM_RE.match(field)                          # 항/호/목 세분 count
+    if m:
+        kind, jo = m.group(1), int(m.group(2))
+        c = next((c for c in clauses if c["jo"] == jo), None)
+        if not c:
+            return None
+        nh, nho, nmok = pc.subitem_counts(pc.parse_subitems(c["text"]))
+        return {"hang": nh, "ho": nho, "mok": nmok}[kind]
     m = re.match(r"title@(\d+)", field)
     if m:
         c = next((c for c in clauses if c["jo"] == int(m.group(1))), None)
@@ -69,8 +80,8 @@ def main():
     print("-" * 78)
     for r in rows:
         pred = predict(r["doc"], r["field"])
-        if r["field"] in ("clause_count", "structure"):   # 정확 일치
-            hit = (pred == r["expected"])
+        if r["field"] in ("clause_count", "structure") or _SUBITEM_RE.match(r["field"]):
+            hit = (pred == r["expected"])                 # 정확 일치(수·구조)
         else:                                             # 제목은 정규화 후 포함
             hit = pred is not None and _norm(r["expected"]) in _norm(pred)
         ok += hit

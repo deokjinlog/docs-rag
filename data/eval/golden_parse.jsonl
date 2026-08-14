@@ -37,3 +37,14 @@
 {"doc": "라이나_간병인사용입원특약", "field": "title@9", "expected": "보험금을 지급하지 않는 사유", "evidence": "회귀잠금: 면책(지급하지 않는 사유)", "labeler": "parse-lock"}
 {"doc": "라이나_간병인사용입원특약", "field": "title@18", "expected": "보험료의 납입을 연체하여 해지된 특약의 부활(효력회복)", "evidence": "회귀잠금: 부활(효력회복)", "labeler": "parse-lock"}
 {"doc": "라이나_간병인사용입원특약", "field": "title@21", "expected": "주계약 약관 및 단체취급특약 규정의 준용", "evidence": "회귀잠금: 특약 준용 조", "labeler": "parse-lock"}
+{"doc": "라이나_간병인사용입원특약", "field": "hang_count@8", "expected": 14, "evidence": "항/호/목 세분: 다항 조(세부규정 ①-⑭)", "labeler": "parse-lock"}
+{"doc": "라이나_간병인사용입원특약", "field": "ho_count@9", "expected": 3, "evidence": "항/호/목 세분: 항 없이 호로 가는 면책(1.2.3.)", "labeler": "parse-lock"}
+{"doc": "라이나_간병인사용입원특약", "field": "ho_count@2", "expected": 4, "evidence": "항/호/목 세분: 정의 조 호+목(가.나.다.)", "labeler": "parse-lock"}
+{"doc": "라이나_간병인사용입원특약", "field": "mok_count@2", "expected": 12, "evidence": "항/호/목 세분: 정의 조 호+목(가.나.다.)", "labeler": "parse-lock"}
+{"doc": "New치아보험_약관", "field": "hang_count@15", "expected": 5, "evidence": "항/호/목 세분: 항→호→목 완전 중첩", "labeler": "parse-lock"}
+{"doc": "New치아보험_약관", "field": "ho_count@15", "expected": 4, "evidence": "항/호/목 세분: 항→호→목 완전 중첩", "labeler": "parse-lock"}
+{"doc": "New치아보험_약관", "field": "mok_count@15", "expected": 3, "evidence": "항/호/목 세분: 항→호→목 완전 중첩", "labeler": "parse-lock"}
+{"doc": "라이나_중환자실입원특약", "field": "hang_count@5", "expected": 0, "evidence": "항/호/목 세분: 단일 항 지급사유(세분 0 잠금)", "labeler": "parse-lock"}
+{"doc": "라이나_중환자실입원특약", "field": "ho_count@5", "expected": 0, "evidence": "항/호/목 세분: 단일 항 지급사유(세분 0 잠금)", "labeler": "parse-lock"}
+{"doc": "다이렉트늘안심입원비보험_약관", "field": "hang_count@5", "expected": 2, "evidence": "항/호/목 세분: 면책 항+호", "labeler": "parse-lock"}
+{"doc": "다이렉트늘안심입원비보험_약관", "field": "ho_count@5", "expected": 8, "evidence": "항/호/목 세분: 면책 항+호", "labeler": "parse-lock"}

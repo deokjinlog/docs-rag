@@ -154,7 +154,7 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 | 규제 백본(표준약관) | 면책/지급사유 **제목 규칙** | △ 제목만 활용, 전체 표준목차 매핑은 안 함 |
 | 주계약 ↔ 특약(준용) | `product.parent_policy_id` · `resolution_note` | ✅ |
 | 조(條) 단위 파싱 | `clause` · `parse_clauses()` | ✅ |
-| 항(項)·호(號) 세분 | `clause.hang` / `parent_id` | ⬜ 미구현 (hang=null) |
+| 항(項)·호(號)·목(目) 세분 | `parse_clauses.parse_subitems` (항①→호1.→목가.) | ✅ 파서 구현(순차검증·항0 컨테이너) · 골든 11잠금 · DB 컬럼 배선은 후속 |
 | 관(款)·장(章) 인식 | — | ⬜ 절(節, `RE_SECTION`)만 인식 |
 | 상호참조 그래프 | `clause_ref` (조/별표/준용) | ✅ 인덱스 타임 해소 |
 | 면책 강제첨부 | `coverage_exclusion_map` | ✅ 제목 규칙 + 본문 감액 |
@@ -168,7 +168,7 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 ## 8. 파싱 계획 함의 — 다음 후보
 
 이 틀에서 자연스럽게 나오는 확장 순서:
-1. **항/호 세분** — 정밀 인용("제5조 3항 2호") 요구 시. `clause.parent_id`로 조↔항 트리.
+1. **항/호 세분** — 정밀 인용("제5조 3항 2호") 요구 시. ✅ 파서 `parse_subitems`(항①→호1.→목가., 순차검증으로 오탐 방지, 항 없이 호가 오는 면책·정의형은 hang=0 컨테이너) 구현 + 파싱골든 11잠금(제8조 항14·제9조 호3·제2조 목12 등)·유닛 8. **남은 것 = clause 테이블 컬럼(hang/ho/parent_id) 배선 + 검색 응답에 계층 경로 노출**(grader.py는 이미 계층 참조 파싱). 현재는 조 본문에서 on-demand 세분(재색인 불필요).
 2. **관/장 heading_path** — 답변에 "제2관 보험금의 지급 > 제7조" 맥락 경로 노출.
 3. **표준약관 prior 강화** — 실제 금감원 표준약관과 대조해 표준 조 목차를 사전으로 → 추출 규칙
    정밀화 + "표준 이탈 조" 탐지.

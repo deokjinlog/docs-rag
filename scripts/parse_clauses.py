@@ -57,6 +57,66 @@ def _annex_kind(title: str) -> str:
 
 _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 
+# 항/호/목 세분 (조 아래 계층) — domain-model §3. 조가 회수 단위, 항/호/목은 정밀 인용용 메타.
+_MOK_SEQ = "가나다라마바사아자차카타파하"
+_HANG_MARK = re.compile(r'^[\s\-•*]*([①-⑳])\s*(.*)$')      # 항: "① …" (본문 캡처)
+_HO_RE = re.compile(r'^[\s\-•*]*(\d{1,2})\.\s+(.*)$')      # 호: "1. …"
+_MOK_RE = re.compile(r'^[\s\-•*]*([가-힣])\.\s+(.*)$')      # 목: "가. …"
+
+
+def parse_subitems(clause_text: str) -> list[dict]:
+    """조 본문 → 항(①)→호(1.)→목(가.) 계층. 마커는 **순차**(①②③·1.2.3.·가.나.다.)일 때만
+    인정 → 본문 중간의 숫자·글자를 마커로 오인하지 않음(precision-first). 항 없이 호가 나오는
+    조(면책·정의형)는 hang=0 컨테이너에 담는다. 각 노드: {hang/ho/mok, text, 하위리스트}."""
+    hangs, cur_hang, cur_ho = [], None, None
+
+    def _hang0():                                          # 항 없이 호/목이 오는 조
+        nonlocal cur_hang
+        if cur_hang is None:
+            cur_hang = {"hang": 0, "text": "", "hos": [], "moks": []}
+            hangs.append(cur_hang)
+        return cur_hang
+
+    for raw in clause_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        m = _HANG_MARK.match(line)                         # 항 — 다음 기대 원문자만
+        if m and len(hangs) < len(_CIRCLED) and m.group(1) == _CIRCLED[len(hangs)]:
+            cur_hang = {"hang": len(hangs) + 1, "text": m.group(2).strip(), "hos": [], "moks": []}
+            hangs.append(cur_hang); cur_ho = None
+            continue
+
+        m = _HO_RE.match(line)                             # 호 — 현재 항 내 순차
+        if m:
+            h = _hang0()
+            if int(m.group(1)) == len(h["hos"]) + 1:
+                cur_ho = {"ho": int(m.group(1)), "text": m.group(2).strip(), "moks": []}
+                h["hos"].append(cur_ho)
+                continue
+
+        m = _MOK_RE.match(line)                            # 목 — 현재 호(없으면 항) 내 순차
+        if m:
+            target = cur_ho["moks"] if cur_ho else (cur_hang["moks"] if cur_hang else None)
+            if target is not None and len(target) < len(_MOK_SEQ) and m.group(1) == _MOK_SEQ[len(target)]:
+                target.append({"mok": m.group(1), "text": m.group(2).strip()})
+                continue
+
+        if cur_ho:                                         # 연속 줄 → 가장 깊은 현재 노드에 이어붙임
+            cur_ho["text"] += " " + line
+        elif cur_hang:
+            cur_hang["text"] += " " + line
+    return hangs
+
+
+def subitem_counts(hangs: list[dict]) -> tuple[int, int, int]:
+    """(항 수, 호 수, 목 수). hang=0(항없음) 컨테이너는 항 수에서 제외."""
+    nh = sum(1 for h in hangs if h["hang"] > 0)
+    nho = sum(len(h["hos"]) for h in hangs)
+    nmok = sum(len(h.get("moks", [])) for h in hangs) + sum(len(o["moks"]) for h in hangs for o in h["hos"])
+    return nh, nho, nmok
+
 
 def select_profile(md: str) -> str:
     """전각【】가 여럿이면 full(라이나), 아니면 half(반각: New치아·다이렉트)."""
