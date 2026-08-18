@@ -1,6 +1,6 @@
 {"query": "치매 진단비를 보장하는 특약이 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R16 KB골든라이프", "anchor": "치매진단비", "evidence": "제3장 치매 관련 특별약관 - 경증이상치매진단비", "labeler": "draft-newcorpus"}
 {"query": "장기요양간병비는 몇 급부터 보장하나요?", "service_code": "01", "document_id": null, "gold_doc": "R16 KB골든라이프", "anchor": "장기요양간병비", "evidence": "제2장 간병 관련 특별약관 - 장기요양간병비(1~5급)", "labeler": "draft-newcorpus"}
-{"query": "상해로 후유장해가 남으면 보험금이 지급되나요?", "service_code": "01", "document_id": null, "gold_doc": "R14 상해질병_회사미상", "anchor": "급격하고도 우연한", "evidence": "제15조 보험금의 종류 및 지급사유 - 상해=급격하고도 우연한 외래의 사고", "labeler": "draft-newcorpus"}
+{"query": "자동차 사고로 변호사 선임 비용을 보장받을 수 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R14 상해질병_회사미상", "anchor": "변호사선임비용", "evidence": "운전자 및 기타 특별약관 - 자동차사고 변호사선임비용손해(R14 유니크)", "labeler": "draft-newcorpus"}
 {"query": "특정부위 부담보 특별약관은 무엇인가요?", "service_code": "01", "document_id": null, "gold_doc": "R14 상해질병_회사미상", "anchor": "특정부위 및 질병 부담보", "evidence": "특정부위 및 질병 부담보 특별약관 제1조", "labeler": "draft-newcorpus"}
 {"query": "영구치 발거의 대상이 되는 원인은 무엇인가요?", "service_code": "01", "document_id": null, "gold_doc": "R09 라이나 실버치아", "anchor": "영구치 발거", "evidence": "제7조 대상이 되는 영구치 발거 원인", "labeler": "draft-newcorpus"}
 {"query": "간호간병통합서비스를 쓰면 면책기간이 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R16 KB골든라이프", "anchor": "간호간병통합서비스", "evidence": "질병 관련 특별약관 - 간호간병통합서비스 면책기간 180일", "labeler": "draft-newcorpus"}

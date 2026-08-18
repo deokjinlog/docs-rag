@@ -30,7 +30,7 @@
 ### 골든 확장 (진행 중, 2026-08-18) — "코퍼스 넓힘 ≠ 골든 넓힘"
 코퍼스는 17배 넓혔지만 **골든(시험지)은 아직 옛 5문서만**(retrieval 25·parse 50). 새 회사 품질을 측정으로 보려면 골든을 넓혀야 함. 진행:
 - **`scripts/ask.py`**(`uv run python scripts/ask.py "질문"`) — 가벼운 검증 CLI. 새 회사 검색 실측: KB 자녀보험 청크 rerank 0.962.
-- **retrieval 골든 초안** `golden_retrieval_newcorpus.jsonl`(6문항, KB 치매·장기요양·회사미상 상해 등, 전 코퍼스 검색). `eval_retrieval --golden <파일>`로 채점(baseline 무관).
+- **retrieval 골든 초안** `golden_retrieval_newcorpus.jsonl`(6문항, KB 치매·장기요양·회사미상 등, 전 코퍼스 검색). `eval_retrieval --golden <파일>`로 채점(baseline 무관). **recall@5: 0.667 → 0.833**(앵커 1개 교정 후, 5/6 rank 1 · MRR 0.861 · recall@10=1.0). 루프 실증: 1차 실패 2건이 검색 gap 아니라 **내 앵커 불량**("급격하고도 우연한"=7개 문서 보일러플레이트)임을 진단 → R14 유니크(변호사선임비용)로 교정 → rank 1. **교훈: 겹치는 표준 문구 말고 각 문서 유니크 급부로 앵커.** 남은 rank6(특정부위 부담보)는 R14 유니크나 경쟁서 6위(recall@10=1.0). 확정 골든은 전문가 2인 라벨(A3).
 - **⚠️ 조 파싱은 KB 복합약관에서 깨짐** — `parse_clauses`가 복합약관을 첫 섹션(sections[0]→[1])만 파싱해 KB(특약 다절)는 741p→7조만 잡음(원문 제N조 3,139회). 회사미상은 조 gap. 검색(청크)은 무관하게 됨. **parse 골든 확장·SQL 경로는 복합약관 다절 파서 fix 후**(별도 작업).
 - **색인 대기**: KB_플러스운전자(1202p)는 세션 중 파일명 인코딩 꼬임 → 클린 재복사 필요. 추출·embed fix는 검증됨.
 
