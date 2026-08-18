@@ -115,9 +115,11 @@ def _rank_of_anchor(sources: list[dict], anchor: str) -> tuple[int, float]:
 
 def main():
     update = "--update-baseline" in sys.argv
-    rows = [json.loads(l) for l in open(GOLDEN, encoding="utf-8") if l.strip()]
+    custom = "--golden" in sys.argv                       # 별도 골든(예: 새 코퍼스 초안) 채점
+    gpath = pathlib.Path(sys.argv[sys.argv.index("--golden") + 1]) if custom else GOLDEN
+    rows = [json.loads(l) for l in open(gpath, encoding="utf-8") if l.strip()]
 
-    print(f"검색 골든셋 채점 — recall@k · MRR  (API {API_BASE})")
+    print(f"검색 골든셋 채점 — recall@k · MRR  (API {API_BASE}) · {gpath.name}")
     print("=" * 92)
     print(f"{'질의':<40}{'정답 조':<22}{'순위':<5}{'rerank':<8}hit@1/3/5")
     print("-" * 92)
@@ -139,7 +141,8 @@ def main():
             per_query.append({"segment": _classify_segment(r["query"]), "hit": hit, "rank": rank})
             rank_s = str(rank) if rank else "—"
             marks = "".join("✅" if hit[k] else "❌" for k in (1, 3, 5))
-            print(f"{r['query'][:38]:<40}{r['gold_clause'][:20]:<22}{rank_s:<5}"
+            label = (r.get("gold_clause") or r.get("gold_doc") or "")[:20]
+            print(f"{r['query'][:38]:<40}{label:<22}{rank_s:<5}"
                   f"{rscore:<8.3f}{marks}")
     except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
         print(f"\n⚠️  스택 미가동 — /retrieve 호출 실패: {e}")
@@ -154,6 +157,10 @@ def main():
     print(f"  {line}   (n={n})")
     if misses:
         print(f"  top-{TOP_K} 밖 미검출 {len(misses)}건: " + " / ".join(m[:24] for m in misses))
+
+    if custom:                                            # 별도 골든 — baseline 대조 생략(다른 셋)
+        print(f"\n  ⚠ 커스텀 골든({gpath.name}) — baseline 대조 생략. 전 코퍼스 검색 = 회사 넘어 시험.")
+        return
 
     # 세그먼트 분해(로드맵 §1.4) — 도메인 어휘 질의가 일반보다 검색 열위인가
     if "--segment" in sys.argv:
