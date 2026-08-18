@@ -57,6 +57,10 @@ curl -X POST localhost:8002/api/v1/docs-rag/documents -H 'Content-Type: applicat
 curl -X POST localhost:8002/api/v1/docs-rag/answer -H 'Content-Type: application/json' \
   -d '{"query":"무면허운전 시 보험금 지급이 되나요?","service_code":"01"}'
 
+# 3-1. 가볍게 확인 — CLI 한 줄 (라우팅·답·근거를 사람이 읽게 편다)
+uv run python scripts/ask.py "중환자실 하루 얼마?"        # SQL 경로 → 결정론 즉답
+uv run python scripts/ask.py "충치는 어떻게 정의되나요?"   # RAG 경로 → 근거 조(생성은 vLLM 필요)
+
 # 4. 검색 골든 채점 (recall@k·MRR, 스택 필요 — 검색≠생성 분리 진단)
 make eval-retrieval           # baseline 대비 회귀 시 exit 1
 ```
