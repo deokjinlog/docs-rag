@@ -4,7 +4,7 @@
 {"query": "자동차 사고로 변호사 선임 비용을 보장받을 수 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R14 상해질병_회사미상", "anchor": "변호사선임비용", "evidence": "운전자 및 기타 특별약관 - 자동차사고 변호사선임비용손해(R14 유니크)", "labeler": "draft-newcorpus"}
 {"query": "특정부위 부담보 특별약관은 무엇인가요?", "service_code": "01", "document_id": null, "gold_doc": "R14 상해질병_회사미상", "anchor": "특정부위 및 질병 부담보", "evidence": "특정부위 및 질병 부담보 특별약관 제1조(R14 유니크)", "labeler": "draft-newcorpus"}
 {"query": "영구치 발거의 대상이 되는 원인은 무엇인가요?", "service_code": "01", "document_id": null, "gold_doc": "R09 라이나 실버치아", "anchor": "영구치 발거", "evidence": "제7조 대상이 되는 영구치 발거 원인", "labeler": "draft-newcorpus"}
-{"query": "LIG 파워업 연금보험에 붙는 상해 후유장해 특약이 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R15 수술비_회사미상(LIG연금)", "anchor": "LIG파워업", "evidence": "LIG파워업연금보험 특별약관(R15 유니크)", "labeler": "draft-newcorpus"}
+{"query": "LIG 파워업 연금보험이라는 상품의 특별약관 구성은 어떻게 되나요?", "service_code": "01", "document_id": null, "gold_doc": "R15 수술비_회사미상(LIG연금)", "anchor": "LIG파워업", "evidence": "LIG파워업연금보험 특별약관(R15 유니크)", "labeler": "draft-newcorpus"}
 {"query": "슬기로운 간편실속 종합건강보험은 어떤 상품인가요?", "service_code": "01", "document_id": null, "gold_doc": "R17 KB종합건강", "anchor": "슬기로운 간편실속", "evidence": "KB 슬기로운 간편실속종합건강보험(R17 유니크)", "labeler": "draft-newcorpus"}
 {"query": "태아 기간에도 적립환급금이 지급되나요?", "service_code": "01", "document_id": null, "gold_doc": "R18 KB자녀보험", "anchor": "태아기간 적립환급금", "evidence": "제11조 태아기간 적립환급금 및 만기환급금의 지급(R18 유니크)", "labeler": "draft-newcorpus"}
-{"query": "자녀의 배상책임을 보장하는 독립특별약관이 있나요?", "service_code": "01", "document_id": null, "gold_doc": "R18 KB자녀보험", "anchor": "배상책임 관련 독립특별약관", "evidence": "제10장 배상책임 관련 독립특별약관(R18 유니크)", "labeler": "draft-newcorpus"}
+{"query": "배상책임 관련 독립특별약관에서는 어떤 손해를 보장하나요?", "service_code": "01", "document_id": null, "gold_doc": "R18 KB자녀보험", "anchor": "배상책임 관련 독립특별약관", "evidence": "제10장 배상책임 관련 독립특별약관(R18 유니크)", "labeler": "draft-newcorpus"}
