@@ -1,0 +1,18 @@
+# ingest 가속 override — celery 임베더를 GPU로.
+# ingest 모드(vLLM off)에선 GPU가 완전히 놀므로 임베더에 붙이면 임베딩이 10~50배 빨라진다
+# (CPU 62s/배치 → GPU 초 단위). 기본 정책(임베더 CPU·GPU는 vLLM 전용)은 vLLM 경합 회피가
+# 이유라 ingest엔 성립 안 함. lite/full 복귀 시엔 이 파일을 빼면 CPU로 자동 복귀(GPU 반납).
+#
+# 적용:  docker compose -f docker-compose.yml -f docker-compose.ingest-gpu.yml up -d celery
+# 반납:  docker compose up -d celery   (override 없이 재생성 → CPU)
+services:
+  celery:
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

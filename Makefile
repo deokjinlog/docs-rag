@@ -7,7 +7,7 @@ export
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
         eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
-        mem watch recover lite ingest answer full
+        mem watch recover lite ingest ingest-gpu answer full
 
 
 # ─── Local Dev (host에서 직접 띄울 때, docker 미사용) ─────────────────────
@@ -120,6 +120,11 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 lite: ## 경량(~2GB) — vLLM·paddle·odl 중지. 검색/관계형/make check/eval + Ralph 공존
 	docker compose stop vllm paddle odl
 	@$(MAKE) --no-print-directory mem
+
+ingest-gpu: ## 색인 가속 — 임베더를 GPU로(ingest 모드 GPU 놀 때 10~50배). 끝나면 `docker compose up -d celery`로 CPU 복귀
+	docker compose -f docker-compose.yml -f docker-compose.ingest-gpu.yml up -d celery
+	docker compose stop vllm 2>/dev/null || true
+	@echo "→ 임베더 GPU. 색인 후 'docker compose up -d celery'로 CPU 복귀(GPU 반납)"
 
 ingest: ## 색인용(~3.7GB) — paddle·odl 켜고 vLLM은 끔(파이프라인은 LLM 불필요). Ralph 공존 가능
 	docker compose start paddle odl 2>/dev/null || docker compose up -d paddle odl
