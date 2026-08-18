@@ -182,3 +182,23 @@ precision/품질 임계는 README "검증되지 않은 영역"의 `semantic_judg
 - 2026-07-23 · 최초 작성 — 측정-먼저 3-Phase 로드맵(대조학습·LoRA·RAGAS 확장) 설계. 트리거 조건부 + 코퍼스 마이닝 데이터 전제.
 - 2026-08-13 · Phase 0 판별식 구현(`diagnose_bottleneck.py`, `make diagnose`) — retrieval·ragas baseline을 읽어 retrieval-bound/generation-bound 판정 + 입력 품질 자가 채점. 현재 `generation-leaning(잠정)`: retrieval 충분(recall@5=1.0)·검색 병목 배제, 그러나 RAGAS faithfulness=nan+self-judge라 게이트 BLOCKED → 비편향 judge 재측정이 트리거. "병목 분해=없음" 해소.
 - 2026-08-13 · retrieval 세그먼트 분해(`eval_retrieval --segment`, 도메인 어휘 vs 일반) — 도메인 질의가 recall@1 0.842·MRR 0.921로 일반(0.500·0.672)보다 우위. Phase 1(도메인 임베딩)의 전제(도메인 열위)를 **반증** → 트리거 더 멀어짐. 판별식이 @5(포화) 대신 @1·MRR로 세그먼트 비교하도록 정밀화.
+
+---
+
+## 부록 — 복합약관 파서 확장 (KB 계열, 2026-08-18 진단)
+
+**문제**: `parse_clauses`/`split_sections`가 New치아·다이렉트 복합약관용으로 설계돼, KB 계열
+복합약관(골든라이프·종합건강·자녀보험 700~1200p)에서 741p→**7조만** 파싱(원문 제N조 3,139회).
+검색(청크)은 무관하게 되나, **관계형 조 파싱·parse 골든·SQL 경로가 새 회사에 안 열림.**
+
+**근본 원인 (4중 breakage, 실측)**:
+1. `RE_APPENDIX_START`가 본문 중간 인라인 `【별표N】` 참조(102개)를 부록 시작으로 오인 → `doc_end`가
+   127K로 잘림(문서 748K). KB는 별표가 특약마다 흩어짐(`###### 별표N` 다수), 끝 1곳 아님.
+2. 특약 경계가 `제N절`(3개) 아니라 **`제N장 ...특별약관`**(26개) — `RE_SUBPRODUCT`는 잡으나 TOC와 섞임.
+3. `split_sections`가 위 doc_end 조기 잘림으로 **0개 서브약관** 반환.
+4. 특약마다 조 번호 재시작 → 단조증가 가드가 끊고, `clause_id` 네임스페이스 충돌.
+
+**착수 시 경로(제안)**: KB 계열 전용 분기 — TOC 끝(점선 리더 종료) 탐지 → `제N장/특별약관` 헤딩으로
+본문 분할 → 특약별 `parse_clauses(region=)` (반각) → 별표 헤딩은 섹션 내부로 스킵 → 서브상품
+네임스페이스(`{doc}_{특약}_제N조`, insurance_bge_m3_1024 컬렉션 방식). 무회귀는 기존 4문서
+parse 골든(50)으로 보증. **포맷 특화라 골든 우선 확장 후 파서 수정 권장.**
