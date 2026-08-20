@@ -193,8 +193,11 @@ def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list
         if not compound:                                # 단일 문서: 구간 내 목차가 섞여 필터 필요
             if profile == "full" and RE_TOC_DOTS.search(rest):
                 continue                                # 전각: 목차 점선 항목 제외
-            if profile == "half" and len(rest.strip()) < 10:
-                continue                                # 반각: 목차(괄호 뒤 본문 없음) 제외
+            if profile == "half" and len(rest.strip()) < 10 and "#" not in m.group(0):
+                continue                                # 반각: 목차(괄호 뒤 본문 없음) 제외.
+                # 단, 본문을 다음 줄에 두는 마크다운 헤딩(## 제N조(제목))은 진짜 조 — 목차·인라인
+                # 참조엔 # 헤딩 마커가 없다(평문·점선). 회사미상 문서(## 제3조·###### 제1조)가
+                # 인라인본문 조와 섞여 특정 조만 누락되던 것을 #-헤딩 면제로 복원(precision-first).
         jo = int(m.group(1))
         # 번호 리셋/역행 = 인용법령 전문(공휴일 규정 등 제1조부터 재시작) 시작 → 본문 끝
         if jos and jo <= last:
