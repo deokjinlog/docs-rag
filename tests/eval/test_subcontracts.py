@@ -75,3 +75,20 @@ def test_parse_compound_single_doc_is_one_subcontract():
     subs = parse_compound(_SINGLE, "BASE")
     assert len(subs) == 1 and subs[0]["is_main"]
     assert [c["jo"] for c in subs[0]["clauses"]] == [1, 2, 3]
+
+
+def test_sections_for_ingest_fallback_on_reset_compound():
+    """제N절 없는 복합약관은 조-리셋 폴백으로 보통약관(부모)+특약(자식) 적재 섹션 생성.
+    특약은 헤딩이 '특별약관'으로 끝나는 진짜 특약만(준용규정 본문 오탐 배제)."""
+    from scripts.ingest_compound import sections_for_ingest
+    secs = sections_for_ingest(_COMPOUND)
+    assert len(secs) == 3
+    assert secs[0]["parent"] is False and secs[0]["name"] is None       # 보통약관
+    assert all(s["parent"] and s["name"].endswith("특별약관") for s in secs[1:])
+
+
+def test_sections_for_ingest_single_doc_unchanged():
+    """단일 약관은 split_sections 그대로(1섹션) — 폴백 안 탐(회귀 0)."""
+    from scripts.ingest_compound import sections_for_ingest
+    secs = sections_for_ingest(_SINGLE)
+    assert len(secs) == 1 and secs[0]["parent"] is False
