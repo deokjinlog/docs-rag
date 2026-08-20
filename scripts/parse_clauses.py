@@ -253,9 +253,16 @@ def detect_subcontracts(md: str) -> list[dict]:
             runs[-1]["count"] += 1
     for r in runs:                                         # 런 직전 특약/보통약관 헤딩 부착
         seg = md[max(0, r["start"] - 400): r["start"]]
-        lines = [ln.strip(" #-•*\t") for ln in seg.splitlines() if ln.strip(" #-•*\t")]
-        r["heading"] = next(
-            (ln for ln in reversed(lines) if "특별약관" in ln or ln.startswith("보통약관")), "")
+        raw = [ln for ln in seg.splitlines() if ln.strip()]
+        # 1순위: 직전 '마크다운 헤딩'(# …) 중 특약/보통약관 이름 — 특약 제목은 헤딩, 준용규정은 본문.
+        # 오귀속 방지(준용규정 본문 "…이 특별약관에서 정하지…"가 헤딩으로 잡히던 것 배제).
+        head = next((ln.strip(" #-•*\t") for ln in reversed(raw)
+                     if ln.lstrip().startswith("#") and ("특별약관" in ln or "보통약관" in ln)), "")
+        if not head:                                       # 2순위(폴백): 헤딩 없으면 본문 라인
+            stripped = [ln.strip(" #-•*\t") for ln in raw]
+            head = next((ln for ln in reversed(stripped)
+                         if "특별약관" in ln or ln.startswith("보통약관")), "")
+        r["heading"] = head
     return runs
 
 
