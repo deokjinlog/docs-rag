@@ -47,14 +47,20 @@ def gate(doc: str) -> list:
     ratio = hangul / nonspace
     rows.append(("한글 비율", "PASS" if ratio >= HANGUL_MIN else "FAIL", f"{ratio:.0%}"))
 
-    # 파싱 — 조 1..N 연속(불변식)
-    contig = jos == list(range(1, len(jos) + 1))
-    rows.append(("조 1..N 연속", "PASS" if contig else "FAIL",
-                 f"{len(jos)}조" if contig else f"끊김: {jos[:12]}…"))
-
-    # 파싱 — 조 개수 sanity
-    rows.append(("조 개수 sanity", "PASS" if JO_MIN <= len(jos) <= JO_MAX else "FAIL",
-                 f"{len(jos)} (정상 {JO_MIN}~{JO_MAX})"))
+    # 복합약관은 단순 파스가 보통약관만 잡아 조-count/연속이 부적용(parse_compound 소관) → FAIL 대신
+    # WARN(오차단 방지). 서브계약이 1개면 단일 약관이라 아래 엄격 검사 그대로.
+    n_sub = len(pc.detect_subcontracts(md))
+    if n_sub >= 2:
+        rows.append(("복합약관 감지", "WARN",
+                     f"서브계약 {n_sub}개 → 단순 조-count 부적용, parse_compound/ingest_compound 소관"))
+    else:
+        # 파싱 — 조 1..N 연속(불변식)
+        contig = jos == list(range(1, len(jos) + 1))
+        rows.append(("조 1..N 연속", "PASS" if contig else "FAIL",
+                     f"{len(jos)}조" if contig else f"끊김: {jos[:12]}…"))
+        # 파싱 — 조 개수 sanity
+        rows.append(("조 개수 sanity", "PASS" if JO_MIN <= len(jos) <= JO_MAX else "FAIL",
+                     f"{len(jos)} (정상 {JO_MIN}~{JO_MAX})"))
 
     # 청킹준비 — 빈 조
     empty = [c["jo"] for c in clauses if not c["text"].strip()]

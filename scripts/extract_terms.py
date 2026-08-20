@@ -31,6 +31,9 @@ def extract_terms(doc: str) -> dict:
          "renewal_cycle_years": None, "term_years": None, "resolution_note": None}
 
     # 청약철회 — '철회' 문맥 안의 'N일 이내'만(엉뚱한 N일 이내 배제). 표준: "받은 날부터 15일 이내"
+    # 주의: 복합약관은 문서 전체에 철회 언급이 많아(반환기일 "철회 접수 후 N일 이내"·특약별) 이 느슨한
+    # 패턴이 반환기일을 오탐할 수 있다(회사미상 수술비=3일 반환 오추출 실측). 청약철회 조-스코프 정밀화 +
+    # ground-truth 골든(문서별 실제 N일)이 회사미상 terms 적재의 선결 — @docs/STATUS.md.
     m = re.search(r'철회[^\n]{0,50}?(\d+)\s*일\s*이내', md) or \
         re.search(r'(\d+)\s*일\s*이내[^\n]{0,30}?철회', md)
     t["cooling_off_days"] = int(m.group(1)) if m else None
