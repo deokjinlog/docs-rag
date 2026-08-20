@@ -1,0 +1,34 @@
+name: CI
+
+# "배포 관문"(199 유닛 + 판별식)을 push마다 자동으로. 스택·모델(paddle/torch) 없이 도는
+# 자립 테스트만 — make check(골든)는 원천 약관을 public repo에 안 올려(저작권) CI 밖.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    name: 유닛 테스트 + 판별식 (스택 불필요)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # tests/는 무거운 import 없음(torch/paddle 불필요) → light dep만 설치해 빠르고 안정.
+      # integration 마크는 pyproject addopts로 자동 skip.
+      - name: 유닛 테스트 (199, integration 자동 skip)
+        run: >
+          uv run --no-project --python 3.12
+          --with pytest --with sqlalchemy --with pydantic --with fastapi
+          --with langchain-openai --with qdrant-client --with tqdm
+          python -m pytest tests/ -q
+
+      # 병목 판별식 — 커밋된 baseline(retrieval_baseline·bottleneck_verdict)만 읽어 스택 없이 판정.
+      - name: 병목 판별식 (retrieval-bound vs generation-bound)
+        run: uv run --no-project --python 3.12 python scripts/diagnose_bottleneck.py
