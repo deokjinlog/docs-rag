@@ -59,6 +59,14 @@ def _rows(a: dict) -> list[dict]:
 
 def build_sql(md: str, product_id: str) -> str:
     ann = pc.find_annexes(md, product_id)
+    # annex_id(=product_id_별표N)는 PK. 복합약관은 같은 번호 별표가 특약마다 반복돼(별표1 ×11 등)
+    # 중복 annex_id를 방출하면 PK 충돌. 첫 것만 유지(별표는 부모 소유 fetch 객체 — 보통약관 별표
+    # 우선). 단일 문서엔 중복 없어 no-op(회귀 0). 특약별 별표 네임스페이싱은 복합파서 후속.
+    seen, uniq = set(), []
+    for a in ann:
+        if a["annex_id"] not in seen:
+            seen.add(a["annex_id"]); uniq.append(a)
+    ann = uniq
     lines = [f"DELETE FROM annex_row WHERE annex_id LIKE '{product_id}\\_별표%';",
              f"DELETE FROM annex WHERE product_id='{product_id}';"]
     for a in ann:
