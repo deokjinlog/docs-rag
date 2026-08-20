@@ -63,6 +63,7 @@ uv run python scripts/ask.py "중환자실 하루 얼마?"        # 질의 → �
 uv run python scripts/ask.py "충치는 어떻게 정의되나요?"   # RAG 경로 → 근거 조(생성은 vLLM 필요)
 uv run python scripts/check_parsing.py                     # 전 약관 조 파싱 품질(조수·구조·과소파싱)
 uv run python scripts/check_parsing.py 중환자실 7          # 제7조 항①→호1.→목가. 정밀 뷰("제5조 3항 2호"의 실물)
+uv run python scripts/check_parsing.py 상해질병 --subs     # 복합약관 분해 — 보통약관+특약 N개 조 복원(42→231조)
 
 # 4. 검색 골든 채점 (recall@k·MRR, 스택 필요 — 검색≠생성 분리 진단)
 make eval-retrieval           # baseline 대비 회귀 시 exit 1

@@ -161,7 +161,7 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 | 별표 종류·행 | `annex` / `annex_row` | ✅ payout/formula/classification |
 | 지급기준표 행 분해(얼마/언제) | `extract_payout.py` `payout_rule` (프로파일 A 3열 + B 매트릭스) | ✅ 라이나·New치아 11/11 · **실 DB 적재 완료(payout_rule 94행/4상품)** · router 배선만 남음 |
 | 회사·포맷 차이 흡수 | `select_profile()` (전각/반각) | ✅ 4문서·3회사 검증 |
-| 복합문서 분해 | `split_sections()` | ✅ 보통약관 + 특약 N |
+| 복합문서 분해 | `split_sections()`(제N절) + **`parse_compound()`(조-리셋)** | ✅ 보통약관 + 특약 N. 제N절 없는 복합약관(`## 특별약관`·제N장: KB·회사미상)은 조-리셋 불변식으로 커버(감지·파싱 검증됨, 적재 배선 후속) |
 
 ---
 
