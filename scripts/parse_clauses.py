@@ -259,6 +259,32 @@ def detect_subcontracts(md: str) -> list[dict]:
     return runs
 
 
+def parse_compound(md: str, base_id: str) -> list[dict]:
+    """복합약관을 서브계약별로 분해 파싱 — 보통약관(S00) + 특약 N(S01..).
+
+    detect_subcontracts가 조-리셋으로 찾은 각 서브계약 region을 parse_clauses(region=…)로
+    개별 파싱해, **제1조부터 재시작하는 특약 조를 복원**한다(현재 메인 parse_clauses는 단조
+    break로 보통약관만). 단일 약관이면 서브계약 1개(=parse_clauses 그대로). 각 항목:
+    {sub_id, name(직전 특약/보통 헤딩), is_main, clauses(parse_clauses 결과)}.
+
+    실측(회사미상 상해질병): 메인 42조 → 서브계약 42개 231조 복원(특약 제목 정확). split_sections
+    (제N절 기반)이 못 잡는 '## 특별약관'·'제N장' 계열 복합약관을 조-리셋 불변식으로 커버한다.
+    적재 경로(ingest_compound) 배선은 후속 — 이 함수는 검증된 사이드카(메인 파싱 경로 미변경)."""
+    runs = detect_subcontracts(md)
+    if len(runs) < 2:                                      # 단일 약관: 서브계약 1개
+        return [{"sub_id": base_id, "name": "", "is_main": True,
+                 "clauses": parse_clauses(md, base_id)}]
+    out = []
+    for i, r in enumerate(runs):
+        end = runs[i + 1]["start"] if i + 1 < len(runs) else len(md)
+        sub_id = f"{base_id}_S{i:02d}"
+        out.append({
+            "sub_id": sub_id, "name": r.get("heading", ""), "is_main": i == 0,
+            "clauses": parse_clauses(md, sub_id, region=(r["start"], end)),
+        })
+    return out
+
+
 def extract_refs(text: str, self_jo: int, product_id: str,
                  annex_pid: str | None = None) -> list[dict]:
     """조 본문에서 참조 추출. 외부 법령 먼저 마스킹 → 내부 조항/항/별표만 남김.

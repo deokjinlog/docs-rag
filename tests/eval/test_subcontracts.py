@@ -4,7 +4,7 @@
 서브계약을 센다. 단일 약관은 1런, 복합약관은 보통약관 + 특약 N런. 메인 파싱 경로(첫 런만)와
 별개인 **검증된 사이드카**라, 회귀 위험 없이 '복합 구조를 정확히 진단'하는 계층의 계약을 못박는다.
 """
-from scripts.parse_clauses import detect_subcontracts
+from scripts.parse_clauses import detect_subcontracts, parse_compound
 
 _SINGLE = (
     "제1조(목적) 이 약관은 보험계약의 내용을 정합니다.\n"
@@ -54,3 +54,24 @@ def test_no_false_split_within_monotonic_run():
         "제5조(나) 이것도 충분히 긴 본문입니다.\n"
         "제9조(다) 이것 역시 충분히 긴 본문입니다.")
     assert len(runs) == 1 and runs[0]["count"] == 3
+
+
+def test_parse_compound_recovers_subcontract_clauses():
+    """복합약관을 서브계약별로 분해 파싱해 특약 조(제1조부터 재시작)를 제목까지 복원.
+    메인 parse_clauses는 단조 break로 보통약관만 잡던 것을 parse_compound가 되살린다."""
+    subs = parse_compound(_COMPOUND, "BASE")
+    assert len(subs) == 3
+    assert subs[0]["is_main"] and not subs[1]["is_main"]
+    # 각 특약의 제1조가 복원되고 제목이 정확
+    titles = {s["name"]: [c["title"] for c in s["clauses"]] for s in subs}
+    ins = next(t for n, t in titles.items() if "상해입원일당" in n)
+    assert ins == ["보험금의 지급", "준용규정"]
+    # 서브계약별 개별 파싱 총 조 = 보통 2 + 특약 2 + 특약 2 = 6
+    assert sum(len(s["clauses"]) for s in subs) == 6
+
+
+def test_parse_compound_single_doc_is_one_subcontract():
+    """단일 약관은 서브계약 1개 = parse_clauses 그대로(복합 분해 불필요)."""
+    subs = parse_compound(_SINGLE, "BASE")
+    assert len(subs) == 1 and subs[0]["is_main"]
+    assert [c["jo"] for c in subs[0]["clauses"]] == [1, 2, 3]

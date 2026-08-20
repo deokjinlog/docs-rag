@@ -85,6 +85,31 @@ def render_clause_detail(doc, jo):
     print(f"{DIM}구조 정답 잠금은 parse 골든(make check) · 로직 유닛은 tests/eval/test_subitems.py{RST}\n")
 
 
+def render_subcontracts(doc):
+    """복합약관을 서브계약별로 분해 파싱해 보통약관 + 특약 N개를 각 조수·제목과 함께 편다.
+    detect_subcontracts로 못 잡던 특약 조(제1조부터 재시작)를 parse_compound가 복원한 결과."""
+    md = st.doc_md(doc)
+    subs = pc.parse_compound(md, "VIEW")
+    if len(subs) < 2:
+        print(f"\n{doc}: 단일 약관(서브계약 1개) — 복합 분해 불필요.\n")
+        return
+    named = [s for s in subs if "특별약관" in s["name"]]
+    total = sum(len(s["clauses"]) for s in subs)
+    print(f"\n{BOLD}{doc}{RST}  {DIM}복합약관 분해 — 서브계약 {len(subs)}개(특약 헤딩 {len(named)}) · 총 {total}조{RST}")
+    print("-" * 86)
+    for s in subs:
+        cl = s["clauses"]
+        if not cl:
+            continue
+        tag = "보통약관" if s["is_main"] else (_clip(s["name"], 44) or "(헤딩없음)")
+        rng = f"제{cl[0]['jo']}~{cl[-1]['jo']}조" if cl else "-"
+        titles = " · ".join(c["title"] for c in cl[:3])
+        print(f"  {BOLD}{tag}{RST}  {DIM}{len(cl)}조 {rng}{RST}  {_clip(titles, 48)}")
+    print("-" * 86)
+    print(f"{DIM}메인 parse_clauses는 보통약관만(단조 break). parse_compound가 조-리셋으로 특약 복원 "
+          f"— 적재 배선은 복합파서 후속.{RST}\n")
+
+
 def _compound_summary(md):
     """복합약관이면 '보통약관 N조 + 특약 M개' 정밀 진단, 아니면 None.
     감지기(detect_subcontracts)로 조-리셋 서브계약을 세어, 막연한 '과소파싱'을 구조 지도로 바꾼다."""
@@ -98,12 +123,22 @@ def _compound_summary(md):
 
 
 def main():
-    filt = sys.argv[1] if len(sys.argv) > 1 else ""
+    args = sys.argv[1:]
+    subs_mode = "--subs" in args                            # 복합약관 서브계약 분해 뷰
+    args = [a for a in args if a != "--subs"]
+    filt = args[0] if args else ""
     # 2번째 인자가 조 번호(7 / 제7조)면 그 조의 항/호/목 정밀 뷰로 분기
-    jo_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+    jo_arg = args[1] if len(args) > 1 else ""
     m = re.search(r"\d+", jo_arg)
     docs_all = sorted(os.path.basename(p)[:-3] for p in glob.glob(
         os.path.join(HERE, "..", "data", "output", "raw", "*.md")))
+    if subs_mode:                                          # 복합약관 분해 뷰
+        cand = [d for d in docs_all if filt in d]
+        if not cand:
+            print(f"문서 없음(필터 '{filt}').")
+            return
+        render_subcontracts(cand[0])
+        return
     if m:
         cand = [d for d in docs_all if filt in d]
         if not cand:
