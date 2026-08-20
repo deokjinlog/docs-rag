@@ -85,6 +85,18 @@ def render_clause_detail(doc, jo):
     print(f"{DIM}구조 정답 잠금은 parse 골든(make check) · 로직 유닛은 tests/eval/test_subitems.py{RST}\n")
 
 
+def _compound_summary(md):
+    """복합약관이면 '보통약관 N조 + 특약 M개' 정밀 진단, 아니면 None.
+    감지기(detect_subcontracts)로 조-리셋 서브계약을 세어, 막연한 '과소파싱'을 구조 지도로 바꾼다."""
+    runs = pc.detect_subcontracts(md)
+    subs = [r for r in runs if "특별약관" in r.get("heading", "")]
+    if len(runs) >= 2 and subs:
+        main_jo = runs[0]["count"]                          # 첫 런 = 보통약관
+        return (f"복합약관 — 보통약관~{main_jo}조 + 특약 {len(subs)}개 감지"
+                f"(현재 보통약관만 파싱, 복합파서 후속)")
+    return None
+
+
 def main():
     filt = sys.argv[1] if len(sys.argv) > 1 else ""
     # 2번째 인자가 조 번호(7 / 제7조)면 그 조의 항/호/목 정밀 뷰로 분기
@@ -121,11 +133,16 @@ def main():
             kb = len(md) // 1024
             dens = (len(md) // n) if n else 0
             struct = _structure(cl)
-            # 판정: 구조이상 우선, 다음 과소파싱(밀도)
-            if struct != "clean":
-                verdict = f"⚠ 구조: {struct}"; warn += 1
-            elif n and dens > DENSITY_WARN:
-                verdict = f"⚠ 과소파싱 의심(복합약관?) — {n}조엔 너무 큼"; warn += 1
+            # 판정: 경고 상황(구조이상 or 과소파싱)이면 서브계약 감지로 복합약관 정밀 진단
+            if struct != "clean" or (n and dens > DENSITY_WARN):
+                comp = _compound_summary(md)
+                if comp:
+                    verdict = f"⚠ {comp}"
+                elif struct != "clean":
+                    verdict = f"⚠ 구조: {struct}"
+                else:
+                    verdict = f"⚠ 과소파싱 의심 — {n}조엔 너무 큼"
+                warn += 1
             else:
                 verdict = "✅ 정상"
             dens_s = f"{dens//1000}K/조" if dens else "-"

@@ -219,6 +219,46 @@ def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list
     return out
 
 
+def detect_subcontracts(md: str) -> list[dict]:
+    """복합약관의 서브계약(보통약관 + 특약 N개)을 **조번호 리셋**으로 감지 — 순수 진단기(사이드카).
+
+    도메인 불변식: 특약은 각각 제1조부터 다시 시작한다(domain-model §2). 조 매치를 문서 순서로
+    훑어 번호가 낮은 값으로 리셋되는 순간을 새 서브계약 경계로 본다. parse_clauses의 메인 경로는
+    아직 첫 런만 파싱(단조 `jo<=last`에서 break)하므로, 이 감지기는 '서브계약이 몇 개고 각 몇
+    조인지'를 **회귀 위험 없이**(메인 경로 미변경) 보고한다 = 복합약관 다절 파서의 검증된 첫 절반.
+
+    각 런에 직전 헤딩(특약 이름/보통약관)을 실어 **진짜 특약 vs 인용법령 전문**을 구분하게 한다
+    (특약 런은 '…특별약관' 헤딩이 앞서고, 부칙/인용법령 전문 리셋은 안 그렇다). 목차·인라인참조
+    필터는 parse_clauses와 동일 규칙 재사용(#-헤딩 반각 조 포함)."""
+    profile = select_profile(md)
+    regex = RE_JO if profile == "full" else RE_JO_HALF
+    md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
+
+    hits = []                                              # (jo, start) 본문 조만
+    for m in regex.finditer(md_masked):
+        line_end = md_masked.find("\n", m.end())
+        rest = md_masked[m.end(): line_end if line_end != -1 else len(md_masked)]
+        if profile == "full" and RE_TOC_DOTS.search(rest):
+            continue                                       # 전각 목차 점선
+        if profile == "half" and len(rest.strip()) < 10 and "#" not in m.group(0):
+            continue                                       # 반각 목차(#-헤딩 진짜 조는 통과)
+        hits.append((int(m.group(1)), m.start()))
+
+    runs = []
+    for jo, pos in hits:
+        if not runs or jo <= runs[-1]["last_jo"]:          # 리셋 = 새 서브계약
+            runs.append({"first_jo": jo, "last_jo": jo, "count": 1, "start": pos})
+        else:
+            runs[-1]["last_jo"] = jo
+            runs[-1]["count"] += 1
+    for r in runs:                                         # 런 직전 특약/보통약관 헤딩 부착
+        seg = md[max(0, r["start"] - 400): r["start"]]
+        lines = [ln.strip(" #-•*\t") for ln in seg.splitlines() if ln.strip(" #-•*\t")]
+        r["heading"] = next(
+            (ln for ln in reversed(lines) if "특별약관" in ln or ln.startswith("보통약관")), "")
+    return runs
+
+
 def extract_refs(text: str, self_jo: int, product_id: str,
                  annex_pid: str | None = None) -> list[dict]:
     """조 본문에서 참조 추출. 외부 법령 먼저 마스킹 → 내부 조항/항/별표만 남김.
