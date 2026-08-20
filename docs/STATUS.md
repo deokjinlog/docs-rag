@@ -36,8 +36,11 @@
 - **🔧 복합약관 다절 파서 — 파싱·배선 완료, DB 적용만 스택 대기** — `parse_clauses` 메인경로는 복합약관을 첫 서브계약(보통약관)만 파싱(단조 break). KB(특약 다절)·회사미상 2건 모두 복합약관(상해질병 216× 특별약관 `## 특별약관` 섹션·수술비=LIG파워업연금·KB 제N장). **조-리셋 불변식**(특약은 각각 제1조부터 재시작)으로 3계층 구현(회귀 0):
     1. `detect_subcontracts`(감지) + `parse_compound`(개별 파싱) — 메인경로 미변경 사이드카. 실측 상해질병 **42조 → 42서브계약 231조**(특약 제목 정확)·KB 자녀보험 특약 540개 감지.
     2. `check_parsing` 정밀 진단("과소파싱 7조"→"복합약관: 보통약관 39조 + 특약 99개") + `--subs` 특약 분해 뷰.
-    3. `ingest_compound.sections_for_ingest` 폴백 배선 — split_sections(제N절)≥2면 기존(New치아·다이렉트 **동일 반환 검증**=회귀 0), 없으면 parse_compound. **dry-run 검증**: 회사미상 상해질병 특약 **31개 product SQL 생성**·New치아 21개 불변. 유닛 8.
-    - **남은 것 = DB 적재 1줄(스택 세션)**: `make lite` 후 `python3 scripts/ingest_compound.py data/output/raw/보험약관_상해질병보장_회사미상.md AXHEALTH_UNK_2024 | docker compose exec -T postgres psql -U docsrag -d docsrag` → 적재 확인 → KB 4종 반복 → 그 후 parse 골든·SQL 경로가 특약까지 확장.
+    3. `ingest_compound.sections_for_ingest` 폴백 배선 — split_sections(제N절)≥2면 기존(New치아·다이렉트 **동일 반환 검증**=회귀 0), 없으면 parse_compound. 유닛 8.
+    - **dry-run 전수 검증(6 복합약관, 스택 없이 SQL 생성)이 준비 상태를 정밀 분리**:
+      - ✅ **회사미상 ×2 적재 준비 완료** — 상해질병 특약 31개·180 clause(514KB), 수술비 20개·141 clause(381KB). SQL 구조 검증(product·clause·parent_policy_id 링크 정상). **DB 적재만 남음**(스택): `make lite` 후 `python3 scripts/ingest_compound.py data/output/raw/보험약관_상해질병보장_회사미상.md AXHEALTH_UNK_2024 | docker compose exec -T postgres psql -U docsrag -d docsrag`(수술비 동일).
+      - ⛔ **KB ×4는 적재 금지(과소포착)** — dry-run이 검출: KB 특약 헤딩이 '특별약관'으로 안 끝나고(제N장 구조 + 【갱신계약】 태그), 조-리셋이 과분할(자녀보험 661런 중 540이 준용규정 본문 오탐)이라 `endswith` 필터가 precision-first로 막음(자녀보험 특약 3개뿐·거대 미분할 보통약관). **KB는 제N장 인식 + false-reset 필터가 별도 필요**(roadmap 복합파서 KB절, deep).
+    - 적재 후 parse 골든·SQL 경로가 회사미상 특약까지 확장.
 - **✅ 파서 로버스트니스 개선(자립)** — 진단 중 별개 버그 수정: 반각 프로파일이 **본문을 다음 줄에 두는 마크다운 헤딩 조**(`## 제3조(계약의 무효)`·`###### 제1조`)를 목차로 오인해 통째 누락하던 것을, `#`-헤딩 마커 면제로 복원(목차·인라인참조엔 `#` 없어 precision 유지). 회사미상 상해질병 **38→42조**(제3·4·16 복원)·수술비 제1~6 복원. 클린 문서(라이나·New치아·다이렉트) 무회귀. 유닛 5(`test_parse_heading_profile`: 복원+목차배제 동시 잠금). 남은 gap(불릿헤딩 `- 제N조` + 복합구조 단조break)은 복합파서 소관.
 - **색인 대기**: KB_플러스운전자(1202p)는 세션 중 파일명 인코딩 꼬임 → 클린 재복사 필요. 추출·embed fix는 검증됨.
 
