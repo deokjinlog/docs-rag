@@ -14,6 +14,7 @@
 | **파싱** | 조 파서 + 항/호/목 세분(`parse_subitems`) | 파싱골든 **50/50** + 유닛(structure·subitems) |
 | **측정 계층** | 지연·부하 벤치 / 병목 판별식 / 검색 세그먼트 | `make bench`·`bench-load`·`diagnose` |
 | **관측** | trace 12섹션 + feedback + input/output guard | `make trace`·`smoke` |
+| **CI 자동 게이트** | GitHub Actions — push마다 194 유닛 + 병목 판별식(스택 없이) | ✅ green (~30s, paddle/torch 없이 light dep) |
 | **포트폴리오** | 라이브 [deokjinlog.github.io/docs-rag](https://deokjinlog.github.io/docs-rag/) | GitHub Pages |
 
 ## 측정 스냅샷 (실측, 2026-08-13~14)
@@ -46,7 +47,7 @@
 |---|---|---|---|
 | C1 | **코퍼스 확장** — 대기 PDF 색인 → 파서 회사-넘어 일반화 실측 | 데이터·로버스트 | ingest 스택(paddle·odl, CPU OCR) |
 | C2 | `parse_subitems` → `clause.hang` **배선** (현재 307/0 빈칸) | 정밀 인용 | 없음(자립) |
-| C3 | **CI 자동 게이트** — push마다 유닛+판별식 | 품질 | GitHub Actions |
+| ~~C3~~ | ~~CI 자동 게이트~~ ✅ **완료**(194 유닛+판별식 green) | 품질 | GitHub Actions |
 | C4 | **generation-bound 확정** — 비편향 judge RAGAS | 측정 | GPU(vLLM)+OPENAI_API_KEY |
 | C5 | 골든 2인 라벨 / 확장 (roadmap A3) | 신뢰도 | 도메인 판단 |
 
