@@ -12,6 +12,25 @@ jobs:
   unit:
     name: 유닛 테스트 + 판별식 (스택 불필요)
     runs-on: ubuntu-latest
+    # config 모듈이 import 시 os.environ[...]를 하드로 읽음(.env는 secret이라 미커밋).
+    # unit 테스트는 실제 연결 안 하므로 더미값으로 import만 통과시킨다.
+    env:
+      CHUNKER_TYPE: adaptive
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      EMBEDDING_MODEL_PATH: /tmp/model
+      RERANKER_MODEL: /tmp/reranker
+      LLM_BASE_URL: http://localhost:8000/v1
+      LLM_MODEL: ci-model
+      ODL_URL: http://localhost:5002
+      PG_HOST: localhost
+      PG_PORT: "5432"
+      PG_USER: ci
+      PG_PASSWORD: ci
+      PG_DBNAME: ci
+      QDRANT_HOST: localhost
+      QDRANT_PORT: "6333"
+      QDRANT_COLLECTION: ci
+      RABBITMQ_URL: amqp://ci:ci@localhost:5672//
     steps:
       - uses: actions/checkout@v4
 
