@@ -20,14 +20,16 @@ jobs:
         with:
           enable-cache: true
 
-      # tests/는 무거운 import 없음(torch/paddle 불필요) → light dep만 설치해 빠르고 안정.
-      # integration 마크는 pyproject addopts로 자동 skip.
-      - name: 유닛 테스트 (199, integration 자동 skip)
+      # tests/ 대부분은 무거운 import 없음 → light dep만 설치해 빠르고 안정(로컬 --isolated 194 passed 1s).
+      # integration 마크는 pyproject addopts로 자동 skip. test_chunker_heading만 sentence-transformers
+      # (torch) 필요한 모델계층 테스트라 스택-free CI에선 제외(docker integration 경로에서 커버).
+      - name: 유닛 테스트 (194, integration·모델의존 제외)
         run: >
           uv run --no-project --python 3.12
           --with pytest --with sqlalchemy --with pydantic --with fastapi
           --with langchain-openai --with qdrant-client --with tqdm
-          python -m pytest tests/ -q
+          --with python-dotenv --with psycopg2-binary
+          python -m pytest tests/ -q --ignore=tests/test_chunker_heading.py
 
       # 병목 판별식 — 커밋된 baseline(retrieval_baseline·bottleneck_verdict)만 읽어 스택 없이 판정.
       - name: 병목 판별식 (retrieval-bound vs generation-bound)
