@@ -1,13 +1,18 @@
 """약관 조 파싱 품질 한눈에 — 전 문서 조 파싱이 건강한지 파악.
 
-    uv run python scripts/check_parsing.py            # 전 문서
+    uv run python scripts/check_parsing.py            # 전 문서 (조수·구조·밀도 표)
     uv run python scripts/check_parsing.py 중환자실    # 이름 부분매칭
+    uv run python scripts/check_parsing.py 중환자실 7  # 제7조 항①→호1.→목가. 정밀 뷰
 
 각 약관을 조 단위로 파싱(stage.doc_clauses, raw에서 on-demand)해 조 수·1..N 구조·과소파싱을
 점검한다. 복합약관을 첫 섹션만 파싱해 조가 확 줄면(예: KB 741p→7조) '과소파싱'으로 플래그 —
 검색(청크)은 무관하나 관계형 조 파싱·parse 골든·SQL 경로가 안 열리는 신호. 순수 파일 기반(DB 불필요).
+
+두 번째 인자로 조 번호(예: 7, 제7조)를 주면 그 조의 항/호/목 계층을 `parse_subitems`로 펼쳐
+"제7조 ①항 2호 가목" 정밀 인용의 실물을 눈으로 확인한다(재색인·DB 불필요, 조 본문서 on-demand).
 """
 import os
+import re
 import sys
 import glob
 import importlib.util
@@ -22,6 +27,7 @@ def _load(name):
     return m
 
 st = _load("stage")
+pc = _load("parse_clauses")
 
 DENSITY_WARN = 30_000   # 조당 30KB 넘으면 과소파싱 의심(정상 약관은 조당 1~10KB)
 
@@ -43,11 +49,60 @@ def _structure(clauses):
     return "clean" if not parts else " ".join(parts)
 
 
+def _clip(s, n=76):
+    s = " ".join(s.split())
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def render_clause_detail(doc, jo):
+    """제N조를 항①→호1.→목가. 계층으로 펼쳐 출력. '제5조 3항 2호' 정밀 인용의 실물."""
+    cl = st.doc_clauses(doc)
+    hit = next((c for c in cl if c["jo"] == jo), None)
+    if not hit:
+        print(f"\n{doc}: 제{jo}조 없음 (파싱된 조: {min(c['jo'] for c in cl)}~{max(c['jo'] for c in cl)})\n")
+        return
+    hangs = pc.parse_subitems(hit["text"])
+    nh, nho, nmok = pc.subitem_counts(hangs)
+    title = (hit.get("title") or "").strip()
+    print(f"\n{BOLD}{doc}  제{jo}조 {title}{RST}  {DIM}[항 {nh} · 호 {nho} · 목 {nmok}]{RST}")
+    print("-" * 86)
+    if not hangs:
+        print(f"  {DIM}(항/호/목 마커 없음 — 단문 조){RST}")
+    for h in hangs:
+        if h["hang"] > 0:                                   # 항 (①②③)
+            mark = pc._CIRCLED[h["hang"] - 1] if h["hang"] <= len(pc._CIRCLED) else f"({h['hang']})"
+            print(f"  {BOLD}{mark}{RST} {_clip(h['text'])}")
+            ind = "     "
+        else:                                               # 항 없이 호가 오는 조(면책·정의형)
+            ind = "  "
+        for mk in h.get("moks", []):                        # 항 직속 목(드묾)
+            print(f"{ind}  {mk['mok']}. {_clip(mk['text'], 70)}")
+        for ho in h["hos"]:
+            print(f"{ind}{BOLD}{ho['ho']}.{RST} {_clip(ho['text'], 72)}")
+            for mk in ho["moks"]:
+                print(f"{ind}   {mk['mok']}. {_clip(mk['text'], 68)}")
+    print("-" * 86)
+    print(f"{DIM}구조 정답 잠금은 parse 골든(make check) · 로직 유닛은 tests/eval/test_subitems.py{RST}\n")
+
+
 def main():
     filt = sys.argv[1] if len(sys.argv) > 1 else ""
-    docs = sorted(os.path.basename(p)[:-3] for p in glob.glob(
+    # 2번째 인자가 조 번호(7 / 제7조)면 그 조의 항/호/목 정밀 뷰로 분기
+    jo_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+    m = re.search(r"\d+", jo_arg)
+    docs_all = sorted(os.path.basename(p)[:-3] for p in glob.glob(
         os.path.join(HERE, "..", "data", "output", "raw", "*.md")))
-    docs = [d for d in docs if filt in d]
+    if m:
+        cand = [d for d in docs_all if filt in d]
+        if not cand:
+            print(f"문서 없음(필터 '{filt}').")
+            return
+        render_clause_detail(cand[0], int(m.group()))
+        if len(cand) > 1:
+            print(f"{DIM}(필터 '{filt}' {len(cand)}건 중 첫 문서 {cand[0]}. 좁히려면 이름 더 구체적으로){RST}\n")
+        return
+
+    docs = [d for d in docs_all if filt in d]
     if not docs:
         print("문서 없음(raw/*.md).")
         return
@@ -80,7 +135,8 @@ def main():
     print("-" * 86)
     print(f"  {len(docs)}문서 · 경고 {warn}건" + (
         f"  {DIM}(과소파싱=복합약관 다절 파서 미대응, roadmap 부록 참조){RST}" if warn else ""))
-    print(f"\n{DIM}조 제목·항호목까지 보려면: make check(파싱 골든) · scripts/parse_clauses.py <조회>{RST}\n")
+    print(f"\n{DIM}조의 항/호/목까지 펼쳐 보려면: check_parsing.py <문서> <조번호>  "
+          f"(예: check_parsing.py 중환자실 7){RST}\n")
 
 
 if __name__ == "__main__":
