@@ -1,0 +1,19 @@
+# retrieve 가속 override — api의 임베더·리랭커를 GPU로.
+# lite 모드(vLLM off)에선 GPU가 완전히 놀므로 임베더·리랭커에 붙이면 /retrieve·/answer(RAG) 지연이
+# 급감한다 — 실측 CPU: query_embed 3.6s + rerank 18.5s = 22s → GPU sub-second. 기본 정책
+# (임베더·리랭커 CPU·GPU는 vLLM 전용)은 vLLM 경합 회피가 이유라 lite엔 성립 안 함. full(answer)
+# 복귀로 vLLM을 올릴 땐 이 override를 빼면 CPU로 자동 복귀(GPU 반납 → vLLM 독점).
+#
+# 적용:  docker compose -f docker-compose.yml -f docker-compose.retrieve-gpu.yml up -d api   (= make lite-gpu)
+# 반납:  docker compose up -d api   (override 없이 재생성 → CPU, GPU 반납)
+services:
+  api:
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
