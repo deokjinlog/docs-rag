@@ -74,6 +74,27 @@ def extract_from_json(json_path: str) -> list[dict]:
     return extract_subcontracts(rr.reconstruct(json_path))
 
 
+def ingest_sections(json_path: str):
+    """적재용: (재구성 md, sections) — ingest_compound이 recon_md에 region으로 기존 로더 재사용.
+    보통약관(첫 특약 title 전)=부모, 각 특약 title→다음 title=자식. load_clauses.build_sql(recon,
+    pid, region)이 region으로 parse_clauses해 회사미상과 동일 경로로 적재된다(코드 재사용)."""
+    recon = rr.reconstruct(json_path)
+    titles, off = [], 0
+    for ln in recon.split("\n"):
+        if ln.lstrip().startswith("#"):
+            t = is_kb_title(ln)
+            if t:
+                titles.append((off, t))
+        off += len(ln) + 1
+    first = titles[0][0] if titles else len(recon)
+    sections = [{"name": None, "parent": False, "region": (0, first)}]     # 보통약관=부모
+    for i, (start, name) in enumerate(titles):
+        end = titles[i + 1][0] if i + 1 < len(titles) else len(recon)
+        if _is_subcontract(pc.parse_clauses(recon[start:end], "probe")):
+            sections.append({"name": name, "parent": True, "region": (start, end)})
+    return recon, sections
+
+
 def main():
     if len(sys.argv) < 2:
         print("용법: kb_parse.py <KB문서명>", file=sys.stderr)

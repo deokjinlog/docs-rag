@@ -59,11 +59,16 @@ def sections_for_ingest(md):
 
 
 def main():
-    md_path, base = sys.argv[1], sys.argv[2]
-    source_doc = sys.argv[3] if len(sys.argv) > 3 else pathlib.Path(md_path).name
-    md = open(md_path, encoding="utf-8").read()
+    src_path, base = sys.argv[1], sys.argv[2]
+    source_doc = sys.argv[3] if len(sys.argv) > 3 else pathlib.Path(src_path).name
 
-    secs = sections_for_ingest(md)
+    # KB 경로: .json 주면 다단 재구성 + title-driven 세그먼트(kb_parse). 그 외는 .md 그대로.
+    if src_path.endswith(".json"):
+        kb = _mod("kb_parse")
+        md, secs = kb.ingest_sections(src_path)
+    else:
+        md = open(src_path, encoding="utf-8").read()
+        secs = sections_for_ingest(md)
     print("BEGIN;")
     tnum = 0
     for s in secs:
