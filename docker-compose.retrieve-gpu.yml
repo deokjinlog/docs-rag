@@ -4,7 +4,12 @@
 # (임베더·리랭커 CPU·GPU는 vLLM 전용)은 vLLM 경합 회피가 이유라 lite엔 성립 안 함. full(answer)
 # 복귀로 vLLM을 올릴 땐 이 override를 빼면 CPU로 자동 복귀(GPU 반납 → vLLM 독점).
 #
-# 적용:  docker compose -f docker-compose.yml -f docker-compose.retrieve-gpu.yml up -d api   (= make lite-gpu)
+# 코드 검증(2026-08-20): 임베더 `SentenceTransformer(model_path)`(utils/embedding.py)·리랭커
+#   `CrossEncoder(model)`(rag/clients.py) 둘 다 device 파라미터 없음 + config(qdrant.py)·전역
+#   torch에도 device 강제 없음 → device는 CUDA_VISIBLE_DEVICES로만 결정. 즉 이 토글은 no-op이
+#   아니라 실제로 GPU 이관(=-1→0 하나로 CPU/GPU 전환). 실측만 Docker Desktop WSL 통합 복구 대기.
+#
+# 적용:  docker compose -f docker-compose.yml -f docker-compose.retrieve-gpu.yml up -d api   (= make retrieve-gpu)
 # 반납:  docker compose up -d api   (override 없이 재생성 → CPU, GPU 반납)
 services:
   api:
