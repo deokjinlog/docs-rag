@@ -168,7 +168,7 @@
   .state.det { color: var(--det); background: var(--det-soft); }
 
   /* ── Narrative cards ── */
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 8px; }
   @media (max-width: 860px) { .cards { grid-template-columns: 1fr; } }
   .card {
     background: var(--surface); border: 1px solid var(--line);
@@ -237,12 +237,12 @@
       <div class="ro">
         <div class="v mono">1.00</div>
         <div class="k">SQL 라우팅 정확도 · 검색 recall@5</div>
-        <div class="n mono">16문항 골든 · 25문항·5문서</div>
+        <div class="n mono">16문항 골든 · 검색 25문항 · 5개사 코퍼스</div>
       </div>
       <div class="ro">
         <div class="v mono">10<small>/10</small></div>
         <div class="k">추출·조립 골든 green (배포 게이트)</div>
-        <div class="n mono">184 tests · 스택 없이 자립</div>
+        <div class="n mono">207 tests · CI green · 스택 없이 자립</div>
       </div>
     </div>
   </header>
@@ -365,7 +365,7 @@
       <div class="tile">
         <div class="label">검색 recall@5 · MRR <span class="state good">green</span></div>
         <div class="val">1.00 <small>· 0.86</small></div>
-        <div class="sub">25문항·5문서 · 원문 앵커 라벨(재청킹 무관) · recall@3=0.96</div>
+        <div class="sub">17배 코퍼스(5개사·13,080청크)서 무회귀 재측정 · 원문 앵커 라벨(재청킹 무관)</div>
       </div>
       <div class="tile">
         <div class="label">추출·조립 골든 <span class="state good">green</span></div>
@@ -373,9 +373,9 @@
         <div class="sub">파싱·payout·면책·완결성·reconcile — 스택 없이 자립(make check)</div>
       </div>
       <div class="tile">
-        <div class="label">테스트 <span class="state good">passed</span></div>
-        <div class="val">184</div>
-        <div class="sub">유닛 184 + 통합 21 · 판별식·SQL 경로·가드 로직 고정</div>
+        <div class="label">테스트 · CI <span class="state good">green</span></div>
+        <div class="val">207</div>
+        <div class="sub">유닛 207 + 통합 21 · GitHub Actions가 push마다 스택 없이 자동 게이트</div>
       </div>
     </div>
   </section>
@@ -386,7 +386,7 @@
     <h2 style="font-size:clamp(1.5rem,3vw,2rem);font-weight:640;max-width:22ch">화려한 기능이 아니라 판단이다</h2>
     <p style="color:var(--ink-2);max-width:60ch;margin:16px 0 26px;font-size:15px">
       CRAG·Critic·가드레일 같은 레이어를 다 만들어 본 뒤, <b style="color:var(--ink)">측정해서 값을 못 하는 건 걷어냈다.</b>
-      아래는 측정이 직관을 뒤집은 세 사례.
+      아래는 측정·조사가 직관을 뒤집은 네 사례.
     </p>
 
     <div class="cards">
@@ -407,6 +407,13 @@
         <h3>확신에 찬 오답을 짓지 않는다</h3>
         <p>병목 판별식이 generation 쪽을 가리키지만, 저장된 RAGAS가 <span class="delta">faithfulness=nan + self-judge</span>라
         판정을 "확정"이 아니라 <b>"잠정·BLOCKED"</b>로 둔다. 비편향 judge 재측정 전엔 게이트를 안 연다.</p>
+      </div>
+      <div class="card">
+        <div class="num mono">CASE 04</div>
+        <h3>복합약관 — 될 것과 안 될 것을 갈랐다</h3>
+        <p>보통약관 + 특약 수십 개인 복합약관을 <b>조-리셋 불변식</b>으로 분해. 새 회사 2곳은
+        <span class="delta">42조 → 231조</span> 특약을 복원해 실 DB 적재. KB는 파고든 끝에 <b>ODL 추출 중복</b>이
+        진짜 블로커임을 증명 — 파서로 안 풀릴 걸 조사로 확인해 헛수고를 막았다.</p>
       </div>
     </div>
   </section>
@@ -447,7 +454,8 @@
       </div>
       <p class="foot-note">
         결정론(관계형 값·별표 표)은 PostgreSQL, 확률적(조 본문 벡터)은 Qdrant — 저장·회수 2축 분리.
-        로컬 RTX 4060 8GB / WSL2 단일 GPU 프로파일. 모든 수치는 2026-08-13 실측(<span class="mono">data/bench/</span>·<span class="mono">data/eval/</span> 보존).<br>
+        로컬 RTX 4060 8GB / WSL2 단일 GPU 프로파일. 코퍼스 5개 회사·13,080청크(복합약관 조-리셋 분해로 새 회사 특약 실 DB 적재).
+        모든 수치는 2026-08-13~20 실측(<span class="mono">data/bench/</span>·<span class="mono">data/eval/</span> 보존).<br>
         <a href="https://github.com/deokjinlog/docs-rag">github.com/deokjinlog/docs-rag</a> — 아키텍처·도메인 모델·평가 방법론 문서 포함.
       </p>
     </div>
