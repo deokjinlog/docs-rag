@@ -1,0 +1,11 @@
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "암진단비(유사암제외)", "field": "waiting_days", "expected": 90, "evidence": "가입 후 90일간 보장 제외", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "암진단비(유사암제외)", "field": "reduction_rate_pct", "expected": 50, "evidence": "가입 후 1년간 보험금 50% 지급", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "질병사망Ⅲ", "field": "reduction_rate_pct", "expected": 50, "evidence": "가입 후 1년간 50%(단,90일미만 10%)", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "질병사망Ⅲ", "field": "sub_rate_pct", "expected": 10, "evidence": "단, 90일미만 10% 지급", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "질병사망Ⅲ", "field": "waiting_days", "expected": null, "evidence": "가입 면책기간 표에 없음(감액만) → NULL", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "coverage": "질병입원일당(1일이상)", "field": "reduction_rate_pct", "expected": 50, "evidence": "가입 후 1년간 보험금 50% 지급", "labeler": "최덕진"}
+{"doc": "KB_슬기로운간편실속종합건강보험(23.11)_약관", "coverage": "암진단비(유사암제외)", "field": "waiting_days", "expected": 90, "evidence": "가입후 90일간 보장 제외", "labeler": "최덕진"}
+{"doc": "KB_슬기로운간편실속종합건강보험(23.11)_약관", "coverage": "암수술비Ⅱ", "field": "reduction_rate_pct", "expected": 40, "evidence": "가입후 1년간 보험금 40% 지급(비-50 실측)", "labeler": "최덕진"}
+{"doc": "KB_플러스운전자상해보험(26.01)_약관", "coverage": "치핵수술비", "field": "reduction_rate_pct", "expected": 50, "evidence": "가입후 1년간 보험금 50% 지급", "labeler": "최덕진"}
+{"doc": "KB_희망플러스자녀보험II(21.07)_약관", "coverage": "다발성소아암진단비", "field": "waiting_days", "expected": 90, "evidence": "가입후 90일간 보장 제외", "labeler": "최덕진"}
+{"doc": "KB_희망플러스자녀보험II(21.07)_약관", "coverage": "다발성소아암진단비", "field": "reduction_rate_pct", "expected": null, "evidence": "(감액없음) 명시 → NULL(precision)", "labeler": "최덕진"}
