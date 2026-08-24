@@ -373,7 +373,7 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 
 ## 7. POST /coverage
 
-**결정론 보장판정 경로** — "이 병(코드) 보장돼요?"를 별표3 ICD 코드범위로 **3-값 판정**(보장 / 미보장→실제 담보 리다이렉트 / 판정불가). 억지 판정 안 함(판정불가 = precision-first). 담보 특정성 반영 — 같은 코드도 담보 따라 갈림(D05는 암진단자금엔 **미보장**, 제자리암진단자금엔 **보장**). **정합 조립(reconcile)**: 판정에 실제 지급 담보의 payout을 붙여 "얼마+보장"의 **모순 없는 완결 답** — 미보장이면 리다이렉트 담보의 지급률까지("암진단자금 미보장 → 제자리암진단자금 10%"). **병명→코드는 별도 계층** — 코드 미특정이면 `matched=false`→RAG. 로직 [`rag/coverage_sql.py`](../src/v1/rag/coverage_sql.py), 데이터 `coverage_range`(`load_coverage.py --load`).
+**결정론 보장판정 경로** — "이 병(코드) 보장돼요?"를 별표3 ICD 코드범위로 **3-값 판정**(보장 / 미보장→실제 담보 리다이렉트 / 판정불가). 억지 판정 안 함(판정불가 = precision-first). 담보 특정성 반영 — 같은 코드도 담보 따라 갈림(D05는 암진단자금엔 **미보장**, 제자리암진단자금엔 **보장**). **정합 조립(reconcile)**: 판정에 실제 지급 담보의 payout을 붙여 "얼마+보장"의 **모순 없는 완결 답** — 미보장이면 리다이렉트 담보의 지급률까지("암진단자금 미보장 → 제자리암진단자금 10%"). **병명→코드는 별도 계층** — 코드 미특정이면 `matched=false`→RAG. 로직 [`rag/coverage_sql.py`](../src/v1/rag/coverage_sql.py), 데이터 `coverage_range`(`load_coverage.py --load`). **KB 암**: 암진단비=악성신생물 별표3−유사암(C44·C73) 범위 뺄셈(`extract_kb_coverage`), 브랜드 base로 스코프해 교차회사 오염 차단.
 
 ### Request
 

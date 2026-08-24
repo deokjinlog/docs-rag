@@ -128,7 +128,7 @@ flowchart LR
 | **자립 `make check`** | parse | 50/50 | 조 수·제목·구조·항호목 세분 |
 | (배포 관문·docker 불필요) | payout · payout_qa | 15 · 5/5 | 지급률·감액·경과기간 / SQL 질의 |
 | | terms | 14 TP·10 TN | 청약철회·갱신·만기 (특약 준용 NULL=TN). **KB 4개 보통약관 추가**(청약철회 15일·갱신형; 예시 만기 오추출 정밀화로 term_years NULL) |
-| | coverage | 7/7 | 별표3 ICD 3-값(담보특정성·제외우선·판정불가) |
+| | coverage · kb_coverage | 7/7 · 8/8 | 별표3 ICD 3-값(담보특정성·제외우선·판정불가). **KB 암 추가**: 암진단비=악성신생물−{C44,C73} 범위 뺄셈(유사암 제외) |
 | | exclusion · catalog | 12 사유 · 30 담보 | 면책 사유 태그 / 담보 멤버십. **catalog KB 4개사 추가**(특약 제목=담보목록, 46~211개/상품) |
 | | waiting | 9 TP·2 TN | **KB 면책기간·감액**(가입 후 90일 보장제외·1년간 50% 감액, 담보별) |
 | | completeness · reconcile | 6/6 · 4/4 | 완결성 recall / 정합(보장↔payout) |

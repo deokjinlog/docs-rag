@@ -1,0 +1,8 @@
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C50", "coverage": "암진단비", "expected": "보장", "redirect": null, "evidence": "유방암 C50=일반암", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C16", "coverage": "암진단비", "expected": "보장", "redirect": null, "evidence": "위암 C16=일반암", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C43", "coverage": "암진단비", "expected": "보장", "redirect": null, "evidence": "흑색종 C43=일반암(유사암 아님, C43~C44서 C44만 제외)", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C73", "coverage": "암진단비", "expected": "미보장", "redirect": "갑상선암", "evidence": "갑상선암 C73=유사암 제외→암진단비 아님", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C44", "coverage": "암진단비", "expected": "미보장", "redirect": "기타피부암", "evidence": "기타피부암 C44=유사암 제외", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C73", "coverage": "갑상선암", "expected": "보장", "redirect": null, "evidence": "갑상선암 담보=C73", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "C44", "coverage": "기타피부암", "expected": "보장", "redirect": null, "evidence": "기타피부암 담보=C44", "labeler": "최덕진"}
+{"doc": "KB_골든라이프케어간편건강보험(26.01)_약관", "code": "D05", "coverage": "암진단비", "expected": "판정불가", "redirect": null, "evidence": "제자리암 D05=암 별표3 밖→판정불가(precision)", "labeler": "최덕진"}

@@ -18,6 +18,7 @@ CHECKS = [
     ("payout_qa",    ["query_payout.py"]),
     ("terms",        ["extract_terms.py"]),
     ("coverage",     ["judge_coverage.py"]),
+    ("kb_coverage",  ["extract_kb_coverage.py"]),   # KB 암 별표3(유사암 제외 범위 뺄셈)
     ("exclusion",    ["extract_exclusion_reasons.py"]),
     ("catalog",      ["extract_coverages.py"]),
     ("waiting",      ["extract_waiting.py"]),        # KB 면책기간·감액(담보별)

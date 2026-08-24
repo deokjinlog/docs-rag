@@ -353,11 +353,13 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # 결정론 3-값 판정, 아니면 RAG(병명→코드 못 짚으면 RAG 소관).
             if SQL_ROUTE_ENABLED and is_coverage_query(body.query):
                 _code = extract_code(body.query)
-                _ranges = CoverageRepository(db).get_ranges() if _code else {}
+                # 브랜드(KB 골든라이프 등) 있으면 그 base로 스코프 — 교차회사 오염 차단(다이렉트
+                # 암진단자금 C73~C75가 KB 암 질의를 가로채지 않게). 브랜드 없으면 None→전체(다이렉트 유지).
+                _cvpid = resolve_base_product_id(body.query)
+                _ranges = CoverageRepository(db).get_ranges(_cvpid) if _code else {}
                 if _code and _ranges:
                     _verdict = judge_coverage(_code, _ranges, extract_coverage(body.query))
-                    # reconcile payout은 담보 키워드로 전 상품에서 매칭(document_id는 payout 상품 아님)
-                    _canswer = _coverage_answer_reconciled(db, None, _code, _verdict)
+                    _canswer = _coverage_answer_reconciled(db, _cvpid, _code, _verdict)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(coverage) 적중: {_code} → {_verdict['verdict']}")
                     background_tasks.add_task(write_trace, rec)
