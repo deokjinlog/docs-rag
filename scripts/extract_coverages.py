@@ -33,9 +33,41 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def _norm_kb_title(t: str) -> str:
+    """KB 특약 제목 → 담보명. 'N. '/'N-N. ' 접두·괄호·병합된 갱신계약 변형 제거."""
+    t = re.sub(r"^\s*\d+(?:-\d+)?\.\s*", "", t)     # 선두 'N. '/'N-N. ' 번호
+    t = re.split(r"\s+\d+-\d+\.\s*|【", t)[0]        # 한 줄에 병합된 2번째 변형/【갱신계약】 컷
+    t = re.sub(r"\([^)]*\)", "", t)                  # 괄호(간편가입·급수 등)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _kb_coverage_titles(doc: str) -> list:
+    """KB 복합약관의 담보 catalog = clean.md 특약 제목(자립 소스, DB 불필요). 비KB면 [].
+
+    KB 재구성 clean.md의 특약 제목(`###### N. 담보명`)이 곧 담보 목록 — 757 특약 각각이 담보다.
+    payout 표가 없어(가입금액 기저·표는 raw에만) payout_rule 소스가 비는 KB를 특약 제목으로 커버.
+    kb_parse.extract_subcontracts(준용규정 있는 진짜 특약만)로 비담보 섹션(금융서비스 안내 등) 배제.
+
+    **재구성 KB 복합약관에만 적용**(stage.RECON_DOCS) — 비KB 문서도 clean.md에 `N.` 제목이 있어
+    extract_subcontracts가 오검출(New치아 19개)해 payout_rule catalog를 덮으면 기존 골든 회귀.
+    """
+    if doc not in _load("stage").RECON_DOCS:
+        return []
+    p = os.path.join(HERE, "..", "data/output/processed", doc, "clean.md")
+    if not os.path.exists(p):
+        return []
+    kb = _load("kb_parse")
+    subs = kb.extract_subcontracts(open(p, encoding="utf-8").read())
+    return [_norm_kb_title(s["name"]) for s in subs if s.get("name")]
+
+
 def extract_coverages(doc: str) -> list:
-    """상품의 보장성 담보 목록(정규화·중복제거). 현재 소스=payout_rule 담보."""
-    raw = {_norm(r["coverage"]) for r in lp._rows_for(doc) if r.get("coverage")}
+    """상품의 보장성 담보 목록(정규화·중복제거). 소스=KB 특약 제목(복합) 또는 payout_rule 담보."""
+    kb_titles = _kb_coverage_titles(doc)                 # KB 복합약관 특약 제목 우선
+    if kb_titles:
+        raw = set(kb_titles)
+    else:
+        raw = {_norm(r["coverage"]) for r in lp._rows_for(doc) if r.get("coverage")}
     by_key = {}                                            # 공백무시 dedup(가철성 의치=가철성의치)
     for c in raw:
         if not c:

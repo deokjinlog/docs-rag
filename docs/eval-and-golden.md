@@ -77,7 +77,7 @@
 - `scripts/judge_coverage.py` — 별표3 ICD 보장판정(담보특정성·제외우선·판정불가), 골든 `golden_coverage.jsonl` 7/7
 - `assemble_answer.py --reconcile` — 사실 화해(보장판정이 payout 게이팅·리다이렉트), 골든 `golden_reconcile.jsonl` 4/4
 - `scripts/extract_exclusion_reasons.py` — 면책 사유 목록(고의·전쟁·위험활동 등 표준 태그), 골든 `golden_exclusion.jsonl` 12/12
-- `scripts/extract_coverages.py` — 담보 catalog(상품별 담보 목록 + "X 보장 담보야?" 멤버십), 골든 `golden_catalog.jsonl` 13/13
+- `scripts/extract_coverages.py` — 담보 catalog(상품별 담보 목록 + "X 보장 담보야?" 멤버십), 골든 `golden_catalog.jsonl` **30/30**. **KB 5번째 회사 확장**: KB 복합약관은 payout 표가 없어(가입금액 기저) 특약 제목(`###### N. 담보명`)을 담보 catalog 소스로 — 재구성 clean.md에서 `kb_parse.extract_subcontracts`(준용규정 있는 진짜 특약만)로 46~211개/상품. **재구성 KB(`stage.RECON_DOCS`)에만 적용**(비KB도 `N.` 제목 오검출→payout catalog 회귀 방지). 없는 담보는 None(precision-first, 헛 멤버십 안 냄)
 - `scripts/gate.py` — 전처리 품질 게이트(한글비율·조 1..N·조 개수·조 길이·별표 해소), FAIL 문서는 gold 진입 차단 (로드맵 A2)
 - `scripts/check.py` (`make check`) — CI 게이트: 전 골든 9종 + 전처리 게이트 한 번에, 회귀 시 exit 1 → 배포/머지 차단 (로드맵 C7)
 - `scripts/eval_retrieval.py` (`make eval-retrieval`) — **검색 골든셋(recall@k · MRR)**, 골든 `golden_retrieval.jsonl` 12문항. recall@1=0.83 · @3/@5=1.00 · MRR=0.92 (라이나 간병인 R04 54청크; 청킹 heading 복구 + 리랭커 heading 입력으로 0.58/0.75→개선). 검색은 스택 필요 → **make check와 분리**(로드맵 A4, §9)
