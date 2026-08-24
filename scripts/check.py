@@ -20,6 +20,7 @@ CHECKS = [
     ("coverage",     ["judge_coverage.py"]),
     ("exclusion",    ["extract_exclusion_reasons.py"]),
     ("catalog",      ["extract_coverages.py"]),
+    ("waiting",      ["extract_waiting.py"]),        # KB 면책기간·감액(담보별)
     ("completeness", ["assemble_answer.py"]),
     ("reconcile",    ["assemble_answer.py", "--reconcile"]),
     ("gate",         ["gate.py"]),                 # FAIL 있으면 ❌(WARN ⚠는 통과)

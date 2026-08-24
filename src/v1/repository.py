@@ -447,3 +447,18 @@ class CoverageRepository:
                "ORDER BY product_id")
         return [r["product_name"] for r in
                 self.db.execute(text(sql), {"pid": base_product_id}).mappings()]
+
+    def get_waiting_facts(self, base_product_id: str) -> list[dict]:
+        """base의 특약별 면책기간·감액 [{product_name, waiting_period_days, reduction_period,
+        reduction_rate_pct}]. waiting_sql.pick_subcontract에 주입. 면책·감액 둘 다 없는 특약은 제외."""
+        from sqlalchemy import text
+        sql = (
+            "SELECT p.product_name, p.waiting_period_days, "
+            "       pr.reduction_period, pr.reduction_rate_pct "
+            "FROM product p "
+            "LEFT JOIN payout_rule pr ON pr.product_id = p.product_id AND pr.source = 'kb_table' "
+            "WHERE p.parent_policy_id = :pid AND p.product_name IS NOT NULL "
+            "  AND (p.waiting_period_days IS NOT NULL OR pr.reduction_rate_pct IS NOT NULL) "
+            "ORDER BY p.product_id"
+        )
+        return [dict(r) for r in self.db.execute(text(sql), {"pid": base_product_id}).mappings()]

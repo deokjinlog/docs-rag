@@ -73,6 +73,7 @@
 - `scripts/extract_payout_llm.py` — 불규칙 표 LLM 폴백 사이드카(다이렉트 병합셀·연령축, 룰베 0.40 vs LLM 1.0 게이트)
 - `scripts/load_payout.py` · `scripts/query_payout.py` — payout_rule SQL 적재기(dry-run) + SQL경로 질의엔진(QA 5/5)
 - `scripts/extract_terms.py` — 계약조건 "언제까지"(청약철회·갱신·만기) 추출, 골든 `golden_terms.jsonl` **24행(TP14·TN10)**(특약 준용 NULL=TN). **KB 5번째 회사 확장**: 4개 보통약관 청약철회 15일·갱신형 추출(재구성 clean.md 소스). 복합약관은 갱신구조 설명에 예시 만기("예 시 48세가 5년만기로 갱신")가 흩어져 홑 'N년만기'가 예시값을 오추출 → **'보험기간은 N년만기' 앵커 + 예시 네거티브 가드**로 정밀화(라이나 10 보존·KB NULL). 라우터 상품해소는 상품명 브랜드 맵(`resolve_base_product_id`, KB base명 OCR 뭉개짐 회피)
+- `scripts/extract_waiting.py` — **KB 면책기간·감액**("언제부터 온전히 받나?"), 골든 `golden_waiting.jsonl` 9 TP·2 TN. KB 간편건강보험은 기저 지급액이 가입금액이라 지급률은 결정론 불가(→RAG)지만, 면책기간(가입 후 90일 보장제외)·감액(1년간 50%)은 2열 표에 명시돼 정밀 추출(소스=raw md 파이프 표, 재구성 clean.md는 표구조 소실). '진단 후 N년간'(재진단 간격)은 가입 면책기간 아님 → 제외. `load_waiting.py`가 담보명→특약 매칭(정확/유일 부분일치만, 모호 스킵)해 product.waiting_period_days + payout_rule(rate_pct NULL·reduction) 적재. select_payout은 rate_pct NULL 행 제외(기저 payout 경로 오염 방지)
 - `scripts/assemble_answer.py` — 답변 조립기 + 완결성 게이트, 골든 `golden_completeness.jsonl` 6/6(별표3 ICD 홉 연결 후)
 - `scripts/judge_coverage.py` — 별표3 ICD 보장판정(담보특정성·제외우선·판정불가), 골든 `golden_coverage.jsonl` 7/7
 - `assemble_answer.py --reconcile` — 사실 화해(보장판정이 payout 게이팅·리다이렉트), 골든 `golden_reconcile.jsonl` 4/4

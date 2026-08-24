@@ -77,7 +77,10 @@ def select_payout(rows: list[dict], query: str) -> dict | None:
     # 보냈어도 담보 미검출이면 억지 매칭(전 rows 후보화)으로 엉뚱한 지급률을 뱉지 않는다.
     if "coverage" not in intent:
         return None
-    cands = [r for r in rows if intent["coverage"] in (r.get("coverage") or "")]
+    # rate_pct=NULL 행은 기저 지급률이 없는 KB 감액전용 행(면책기간·감액만) — "얼마?"의 결정론
+    # 답이 될 수 없으므로(기저는 가입금액 상대) payout 후보에서 제외. KB 감액은 waiting 경로 소관.
+    cands = [r for r in rows
+             if intent["coverage"] in (r.get("coverage") or "") and r.get("rate_pct") is not None]
     hits = []
     for r in cands:
         skip = False

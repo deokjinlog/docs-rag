@@ -82,6 +82,13 @@ class CatalogRequest(BaseModel):
     product_id: str | None = Field(None, examples=["KB_GOLDENLIFE_2026"], max_length=64)
 
 
+class WaitingRequest(BaseModel):
+    """POST /waiting 요청 body — 면책기간·감액("언제부터 온전히 받나?")."""
+    query: str = Field(..., examples=["골든라이프 암진단비 면책기간 얼마야?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["KB_GOLDENLIFE_2026"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 

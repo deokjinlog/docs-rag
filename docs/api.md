@@ -17,6 +17,7 @@ Base URL: `/api/v1/docs-rag`
 | POST | `/coverage` | 결정론 보장판정 (별표3 ICD 3-값) | O |
 | POST | `/exclusion` | 결정론 면책 상세 (지급 제외 사유) | O |
 | POST | `/catalog` | 결정론 담보 멤버십 (이 상품에 X 담보 있어?) | O |
+| POST | `/waiting` | 결정론 면책기간·감액 (언제부터 온전히 받나?) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -451,6 +452,30 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
 |------|------|------|
 | covered | 항상 | 질의에서 확정한 담보명(정규화). 미적중이면 `[]`→matched=false→RAG |
 | catalog_size | 항상 | 해당 base 상품의 담보(특약) 총수 — 근거 |
+
+---
+
+## 8-2. POST /waiting
+
+**결정론 면책기간·감액 경로** — "언제부터 (온전히) 받나? / 면책기간·감액은?"을 담보(특약)별로. KB 간편건강보험은 기저 지급액이 대부분 가입금액(소비자 설정)이라 지급률은 결정론 불가(→RAG)지만, **면책기간(가입 후 N일 보장 제외)·감액(가입 후 1년간 M% 지급)은 2열 표에 명시**돼 정밀 추출된다. 특약 1개=담보 1개라 질의의 담보명으로 특약을 짚어 `product.waiting_period_days` + 감액(`payout_rule` source='kb_table')을 답한다. 브랜드+담보 미해소·데이터 없으면 `matched=false`→RAG. 담보명 로마자 접미(질병사망**Ⅲ**)는 유일할 때만 매칭(암수술비Ⅰ vs Ⅱ 모호는 RAG). 로직 [`rag/waiting_sql.py`](../src/v1/rag/waiting_sql.py).
+
+### Request
+
+```json
+{ "query": "골든라이프 암진단비 면책기간 얼마야?", "service_code": "01", "product_id": "KB_GOLDENLIFE_2026" }
+```
+
+### Response (200)
+
+```json
+{
+  "query": "골든라이프 암진단비 면책기간 얼마야?",
+  "route": "sql",
+  "matched": true,
+  "answer": "암진단비 · 면책기간 90일(가입 후 90일간 보장 제외) · 가입 후 1년이내 50% 감액",
+  "fact": {"product_name": "…암진단비(유사암제외)(간편가입)", "waiting_period_days": 90, "reduction_period": "1년이내", "reduction_rate_pct": 50}
+}
+```
 
 ---
 

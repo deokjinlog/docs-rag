@@ -49,10 +49,12 @@ from .rag.coverage_sql import (
 )
 from .rag.exclusion_sql import is_exclusion_query, format_exclusions
 from .rag.catalog_sql import is_catalog_query, find_covered, format_catalog
+from .rag.waiting_sql import is_waiting_query, pick_subcontract, format_waiting
 from .schemas import (
     AnswerRequest,
     CatalogRequest,
     CoverageRequest,
+    WaitingRequest,
     DocumentCreate,
     EmbedRequest,
     ExclusionRequest,
@@ -389,6 +391,28 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                         "sources": [],
                         "route": {"strategy": "sql", "query_type": route.query_type.value},
                         "citations": [{"claim": _caanswer, "refs": [_cpid], "supported_by_chunks": []}],
+                    }
+
+            # SQL 경로 — 면책기간·감액("언제부터 온전히 받나?"). KB 특약별 면책기간(가입 후 N일
+            # 보장제외)·감액(1년간 M%). 브랜드+담보로 특약 해소, 못 짚거나 데이터 없으면 RAG.
+            if SQL_ROUTE_ENABLED and is_waiting_query(body.query):
+                _wpid = resolve_base_product_id(body.query)
+                _wrows = CoverageRepository(db).get_waiting_facts(_wpid) if _wpid else []
+                _wrow = pick_subcontract(_wrows, body.query) if _wrows else None
+                if _wrow and (_wrow.get("waiting_period_days") is not None
+                              or _wrow.get("reduction_rate_pct") is not None):
+                    _wanswer = format_waiting(_wrow)
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로(waiting) 적중: {_wpid} → {_wrow.get('_coverage')}")
+                    background_tasks.add_task(write_trace, rec)
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": _wanswer,
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{"claim": _wanswer, "refs": [_wpid], "supported_by_chunks": []}],
                     }
 
             # SQL 경로 — 면책 상세("뭐가 면책?"). coverage(코드 판정) 뒤 — "보장 안 되는 경우?"는
@@ -736,6 +760,28 @@ def catalog(body: CatalogRequest, db: Session = Depends(get_db)):
         "answer": format_catalog(covered),
         "covered": covered,      # 적중 담보명. miss면 []
         "catalog_size": len(names),   # 근거: 해당 상품 담보 총수
+    }
+
+
+@router.post("/waiting", summary="결정론 면책기간·감액 (SQL 경로)", tags=["Retrieval"])
+def waiting(body: WaitingRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "언제부터 (온전히) 받나? / 면책기간·감액?"을 특약별 결정론으로.
+
+    KB 복합약관은 담보(특약)별 면책기간(가입 후 N일 보장제외)·감액(1년간 M%)이 표에 명시. 브랜드+
+    담보로 특약 짚어 답. 못 짚거나 데이터 없으면 matched=false→RAG. 로직 `rag/waiting_sql.py`.
+    """
+    _apply_input_guard(body)
+    pid = body.product_id or resolve_base_product_id(body.query)
+    rows = CoverageRepository(db).get_waiting_facts(pid) if pid else []
+    row = pick_subcontract(rows, body.query) if rows else None
+    matched = bool(row and (row.get("waiting_period_days") is not None
+                            or row.get("reduction_rate_pct") is not None))
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": matched,
+        "answer": format_waiting(row if matched else None),
+        "fact": row if matched else None,   # 근거: 특약 면책기간·감액
     }
 
 
