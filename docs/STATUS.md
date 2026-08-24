@@ -14,7 +14,7 @@
 | **파싱** | 조 파서 + 항/호/목 세분(`parse_subitems`) + **복합약관 분해**(`parse_compound` 조-리셋) + CLI 정밀 뷰 | 파싱골든 **50/50** + 유닛(structure·subitems·subcontracts) |
 | **측정 계층** | 지연·부하 벤치 / 병목 판별식 / 검색 세그먼트 | `make bench`·`bench-load`·`diagnose` |
 | **관측** | trace 12섹션 + feedback + input/output guard | `make trace`·`smoke` |
-| **CI 자동 게이트** | GitHub Actions — push마다 218 유닛 + 병목 판별식(스택 없이) | ✅ green (~30s, paddle/torch 없이 light dep) |
+| **CI 자동 게이트** | GitHub Actions — push마다 244 유닛(6경로 게이트 상호작용 포함) + 병목 판별식(스택 없이) | ✅ green (~30s, paddle/torch 없이 light dep) |
 | **포트폴리오** | 라이브 [deokjinlog.github.io/docs-rag](https://deokjinlog.github.io/docs-rag/) | GitHub Pages |
 
 ## 측정 스냅샷 (실측, 2026-08-13~14)
