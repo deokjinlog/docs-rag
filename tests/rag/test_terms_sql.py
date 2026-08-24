@@ -1,6 +1,8 @@
 """SQL 경로 terms_sql 순수 로직 — 계약조건(청약철회·갱신) 결정론 답 + 준용 NULL 철학."""
 
-from src.v1.rag.terms_sql import is_terms_query, coverage_hint, format_terms
+from src.v1.rag.terms_sql import (
+    is_terms_query, coverage_hint, format_terms, resolve_base_product_id,
+)
 
 
 def test_terms_gate_fires_on_terms_queries():
@@ -50,3 +52,17 @@ def test_format_terms_non_renewable():
 
 def test_format_terms_none_returns_rag_signal():
     assert "→RAG" in format_terms(None)
+
+
+def test_resolve_base_product_kb_by_brand():
+    """KB 상품명 키워드 → 정확한 base 상품ID(담보 LIKE로는 못 잡는 브랜드 해소)."""
+    assert resolve_base_product_id("KB 골든라이프 청약철회 언제까지?") == "KB_GOLDENLIFE_2026"
+    assert resolve_base_product_id("슬기로운 간편실속 갱신형인가요?") == "KB_SEULGI_2023"
+    assert resolve_base_product_id("KB 운전자보험 청약 철회 며칠?") == "KB_DRIVER_2026"
+    assert resolve_base_product_id("희망플러스 자녀보험 청약철회 기간?") == "KB_CHILD_2021"
+
+
+def test_resolve_base_product_none_when_no_brand():
+    """상품명 미지목 → None(→ coverage_hint LIKE 폴백, precision-first)."""
+    assert resolve_base_product_id("청약철회 언제까지 가능한가요?") is None
+    assert resolve_base_product_id("중환자실 갱신되나요?") is None   # 담보만 → LIKE 폴백 소관

@@ -34,10 +34,31 @@ def _load(name):
 
 pc = _load("parse_clauses")
 
+# 재구성 필요 문서 — ODL이 2단 레이아웃을 가로질러 읽어 조가 뒤섞이는 KB 계열(700~1200p, 다단
+# 페이지 96~98%). 이 문서들만 raw md 대신 .json 레이아웃 트리에서 page→단→y로 읽기순서를 복원해
+# clean.md의 소스로 쓴다(reconstruct_reading_order). 비KB(라이나·다이렉트·New치아·회사미상)는 이미
+# 현재 clean.md로 9골든이 통과 중이라 소스를 안 바꾼다 — 재구성을 전역 적용하면 기존 골든이 회귀.
+# 근거: reconstruct_reading_order.py 도입부(KB 골든라이프 .md 뒤죽박죽→재구성 후 제1~53조 정순).
+RECON_DOCS = frozenset({
+    "KB_골든라이프케어간편건강보험(26.01)_약관",
+    "KB_슬기로운간편실속종합건강보험(23.11)_약관",
+    "KB_플러스운전자상해보험(26.01)_약관",
+    "KB_희망플러스자녀보험II(21.07)_약관",
+})
+
 
 def _bronze_md(doc: str) -> str:
     p = next(x for x in glob.glob(os.path.join(BRONZE, "*.md")) if doc in x)
     return open(p, encoding="utf-8").read()
+
+
+def _source_md(doc: str) -> str:
+    """clean.md의 소스 — 재구성 대상(다단 KB)은 .json에서 읽기순서 복원, 그 외는 raw md 그대로."""
+    if doc in RECON_DOCS:
+        jp = next((x for x in glob.glob(os.path.join(BRONZE, "*.json")) if doc in x), None)
+        if jp:
+            return _load("reconstruct_reading_order").reconstruct(jp)
+    return _bronze_md(doc)
 
 
 def normalize(md: str) -> str:
@@ -62,7 +83,7 @@ def profile(doc: str, md: str) -> dict:
 
 
 def stage(doc: str) -> int:
-    md = normalize(_bronze_md(doc))
+    md = normalize(_source_md(doc))
     d = os.path.join(PROCESSED, doc)
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "clean.md"), "w", encoding="utf-8").write(md)

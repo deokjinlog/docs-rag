@@ -42,7 +42,7 @@ from .repository import (
 from .rag.payout_sql import (
     select_payout, format_payout, format_payout_complete, is_payout_amount_query,
 )
-from .rag.terms_sql import is_terms_query, coverage_hint, format_terms
+from .rag.terms_sql import is_terms_query, coverage_hint, format_terms, resolve_base_product_id
 from .rag.coverage_sql import (
     is_coverage_query, extract_code, extract_coverage, judge_coverage, format_coverage,
     effective_coverage,
@@ -319,9 +319,15 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # SQL 경로 — 계약조건("언제까지?": 청약철회·갱신). terms 게이트 + 담보 키워드로 상품
             # 해소되면 결정론(준용 NULL 포함), 아니면 RAG. amount(payout)와 배타.
             if SQL_ROUTE_ENABLED and is_terms_query(body.query):
-                # document_id(R01)는 product_id(LINA_ICU)가 아니라 담보 키워드로만 상품 해소
-                _hint = coverage_hint(body.query)
-                _product = ProductRepository(db).get_terms(None, _hint) if _hint else None
+                # 상품 해소: 상품명 키워드(골든라이프·자녀 등)로 base 상품ID 우선 해소(KB는 base
+                # product_name이 뭉개져 LIKE 불가), 없으면 담보 키워드 LIKE 폴백. document_id는
+                # product_id가 아니라 무시(precision-first — 못 짚으면 아래 None→RAG).
+                _pid = resolve_base_product_id(body.query)
+                if _pid:
+                    _product = ProductRepository(db).get_terms(_pid)
+                else:
+                    _hint = coverage_hint(body.query)
+                    _product = ProductRepository(db).get_terms(None, _hint) if _hint else None
                 if _product is not None:
                     _tanswer = format_terms(_product)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
@@ -364,7 +370,8 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # SQL 경로 — 면책 상세("뭐가 면책?"). coverage(코드 판정) 뒤 — "보장 안 되는 경우?"는
             # coverage 게이트가 켜지나 코드 없어 여기로 떨어진다. 상품은 담보 키워드로 해소.
             if SQL_ROUTE_ENABLED and is_exclusion_query(body.query):
-                _ep = ProductRepository(db).get_terms(coverage_kw=coverage_hint(body.query))
+                _ep = ProductRepository(db).get_terms(
+                    resolve_base_product_id(body.query), coverage_hint(body.query))
                 _excls = PayoutRepository(db).get_exclusions(_ep["product_id"]) if _ep else []
                 if _excls:
                     _eanswer = format_exclusions(_excls, _ep.get("resolution_note"))
@@ -634,7 +641,8 @@ def terms(body: TermsRequest, db: Session = Depends(get_db)):
     "주계약 준용 소관, 확인 필요". 상품 미해소면 matched=false→RAG. 로직 `rag/terms_sql.py`.
     """
     _apply_input_guard(body)
-    product = ProductRepository(db).get_terms(body.product_id, coverage_hint(body.query))
+    _pid = body.product_id or resolve_base_product_id(body.query)   # 상품명 키워드 우선(KB base)
+    product = ProductRepository(db).get_terms(_pid, coverage_hint(body.query))
     return {
         "query": body.query,
         "route": "sql",
@@ -671,7 +679,8 @@ def exclusion(body: ExclusionRequest, db: Session = Depends(get_db)):
     matched=false→RAG. 로직 `rag/exclusion_sql.py`.
     """
     _apply_input_guard(body)
-    product = ProductRepository(db).get_terms(body.product_id, coverage_hint(body.query))
+    _rid = body.product_id or resolve_base_product_id(body.query)   # 상품명 키워드 우선(KB base)
+    product = ProductRepository(db).get_terms(_rid, coverage_hint(body.query))
     pid = product["product_id"] if product else None
     exclusions = PayoutRepository(db).get_exclusions(pid) if pid else []
     resolution = product.get("resolution_note") if product else None

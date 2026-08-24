@@ -173,7 +173,11 @@ payout_rule(coverage, cause, period_bucket, rate_pct, per_unit, limit_days, redu
 3. **표준약관 prior 강화** — 실제 금감원 표준약관과 대조해 표준 조 목차를 사전으로 → 추출 규칙
    정밀화 + "표준 이탈 조" 탐지.
 4. **고정사실 컬럼 채우기** — 청약철회·갱신·만기 "언제까지"를 조 본문에서 추출(`scripts/extract_terms.py`,
-   골든 `golden_terms.jsonl` 8/8). **특약은 준용이라 청약철회 NULL이 정답**(보통약관 소관, TN). 면책기간은 후속.
+   골든 `golden_terms.jsonl` **24행 TP14·TN10**). **특약은 준용이라 청약철회 NULL이 정답**(보통약관 소관, TN). 면책기간은 후속.
+   **KB(5번째 회사) 확장 완료** — 4개 보통약관 청약철회 15일·갱신형 적재(757 특약은 준용 NULL 유지). 소스는
+   재구성 clean.md(다단 뒤섞임 교정, `stage.RECON_DOCS`). 복합약관의 예시 만기 오추출은 '보험기간은 N년만기'
+   앵커+예시 가드로 정밀화(라이나 10 보존·KB NULL). 라우터는 상품명 브랜드 맵(`resolve_base_product_id`)으로
+   KB base 해소(KB base product_name이 OCR로 뭉개져 DB LIKE 불가). payout·coverage의 KB 확장은 후속(별표 표 추출).
 5. **지급기준표 → `payout_rule` SQL 적재** — `extract_payout.py`가 뽑은 지급률·단위·한도·경과기간별
    감액을 실제 테이블로 적재. **실 DB 적재 완료**(`load_payout.py --load`, payout_rule 94행/4상품·
    query_payout 골든 5/5). **남은 것 = 3경로(SQL/RAG/fetch) router 배선(B5)** — SQL 질의로직은

@@ -26,11 +26,21 @@ def _mod(name):
 et = _mod("extract_terms")
 lp = _mod("load_payout")     # DOC_PID 단일 소스 재사용
 
+# KB 보통약관 4종 — terms(청약철회 15일·갱신형)는 보통약관 소관이라 base 상품에만 적재.
+# 757개 특약은 청약철회 NULL + resolution_note(준용 소관)를 유지(준용 NULL 철학, 여기서 안 건드림).
+# payout용 DOC_PID와 분리 — KB payout 표 추출(Phase D)은 별개라 여기 넣어도 payout에 영향 없음.
+KB_BASE_PID = {
+    "KB_골든라이프케어간편건강보험(26.01)_약관": "KB_GOLDENLIFE_2026",
+    "KB_슬기로운간편실속종합건강보험(23.11)_약관": "KB_SEULGI_2023",
+    "KB_플러스운전자상해보험(26.01)_약관": "KB_DRIVER_2026",
+    "KB_희망플러스자녀보험II(21.07)_약관": "KB_CHILD_2021",
+}
+
 
 def main():
     load = "--load" in sys.argv
     rows = []
-    for doc, pid in lp.DOC_PID.items():
+    for doc, pid in {**lp.DOC_PID, **KB_BASE_PID}.items():
         t = et.extract_terms(doc)
         rows.append((pid, doc, t))
         print(f"-- {doc} ({pid}): 청약철회={t['cooling_off_days']} 갱신={t['is_renewable']}"

@@ -72,7 +72,7 @@
 - `data/eval/golden_payout.jsonl` — 소비자 QA "얼마/언제" 골든셋(지급률·단위·한도·감액·경과기간, 15건, 15/15 순증)
 - `scripts/extract_payout_llm.py` — 불규칙 표 LLM 폴백 사이드카(다이렉트 병합셀·연령축, 룰베 0.40 vs LLM 1.0 게이트)
 - `scripts/load_payout.py` · `scripts/query_payout.py` — payout_rule SQL 적재기(dry-run) + SQL경로 질의엔진(QA 5/5)
-- `scripts/extract_terms.py` — 계약조건 "언제까지"(청약철회·갱신·만기) 추출, 골든 `golden_terms.jsonl` 8/8(특약 준용 NULL=TN)
+- `scripts/extract_terms.py` — 계약조건 "언제까지"(청약철회·갱신·만기) 추출, 골든 `golden_terms.jsonl` **24행(TP14·TN10)**(특약 준용 NULL=TN). **KB 5번째 회사 확장**: 4개 보통약관 청약철회 15일·갱신형 추출(재구성 clean.md 소스). 복합약관은 갱신구조 설명에 예시 만기("예 시 48세가 5년만기로 갱신")가 흩어져 홑 'N년만기'가 예시값을 오추출 → **'보험기간은 N년만기' 앵커 + 예시 네거티브 가드**로 정밀화(라이나 10 보존·KB NULL). 라우터 상품해소는 상품명 브랜드 맵(`resolve_base_product_id`, KB base명 OCR 뭉개짐 회피)
 - `scripts/assemble_answer.py` — 답변 조립기 + 완결성 게이트, 골든 `golden_completeness.jsonl` 6/6(별표3 ICD 홉 연결 후)
 - `scripts/judge_coverage.py` — 별표3 ICD 보장판정(담보특정성·제외우선·판정불가), 골든 `golden_coverage.jsonl` 7/7
 - `assemble_answer.py --reconcile` — 사실 화해(보장판정이 payout 게이팅·리다이렉트), 골든 `golden_reconcile.jsonl` 4/4

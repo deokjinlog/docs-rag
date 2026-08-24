@@ -50,6 +50,38 @@ def test_terms_endpoint_no_product_rag_fallback():
 
 
 @pytest.mark.integration
+def test_terms_endpoint_kb_brand_resolves_to_base():
+    """KB 상품명 브랜드로 base 상품 해소 → 청약철회 15일 실값(복합 KB 보통약관)."""
+    from fastapi.testclient import TestClient
+    from api import app
+
+    client = TestClient(app)
+    r = client.post("/api/v1/docs-rag/terms", json={
+        "query": "KB 골든라이프 청약철회 언제까지 가능한가요?", "service_code": "01"}).json()
+    if not r["matched"]:
+        pytest.skip("KB terms 미적재 — load_terms.py --load 필요")
+    assert r["product"]["product_id"] == "KB_GOLDENLIFE_2026"   # 정확한 KB base 해소
+    assert "15일 이내" in r["answer"] and "갱신형" in r["answer"]
+
+
+@pytest.mark.integration
+def test_answer_routes_kb_terms_to_sql_no_llm():
+    """/answer KB 계약조건 질의 → route=sql, 15일, LLM 미호출(교차회사 오해소 없음)."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from api import app
+
+    with patch("v1.router.invoke_clean") as mock_invoke:
+        client = TestClient(app)
+        d = client.post("/api/v1/docs-rag/answer", json={
+            "query": "슬기로운 간편실속 청약철회 며칠 이내인가요?", "service_code": "01"}).json()
+    if d["route"]["strategy"] != "sql":
+        pytest.skip("KB terms 미적재 — 라우팅 안 됨")
+    assert "15일 이내" in d["answer"] and mock_invoke.call_count == 0
+    assert d["citations"][0]["refs"] == ["KB_SEULGI_2023"]   # 슬기로운 → 정확 해소
+
+
+@pytest.mark.integration
 def test_answer_routes_terms_query_to_sql_no_llm():
     """/answer 계약조건 질의(갱신) → route=sql, LLM 미호출."""
     from unittest.mock import patch

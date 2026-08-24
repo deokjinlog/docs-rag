@@ -16,10 +16,29 @@ _TERMS_INTENT_RE = re.compile(r"청약\s*철회|철회|갱신|만기|자동\s*�
 # product 해소용 담보 키워드 (payout_sql과 공유 개념 — 질의어 → 상품)
 _COVERAGE_KEYWORDS = ["중환자실", "레진", "치아", "충치", "제자리암", "암진단자금", "소득보장", "입원"]
 
+# 상품명 키워드 → base 상품ID (큐레이션·감사가능). 담보(coverage_name) LIKE로는 못 잡는 상품을
+# '상품명'으로 정밀 해소한다 — KB 간편건강보험 계열은 담보가 아니라 상품 브랜드로 지목되고, KB 자녀
+# 보통약관은 base product_name이 OCR로 뭉개져("1. 보험약관이란?") DB LIKE 불가라 명시 맵이 필요.
+# 순서=구체적 우선(첫 매칭). 여기서 못 잡으면 라우터가 coverage_hint LIKE로 폴백(precision-first).
+_PRODUCT_HINTS = [
+    ("골든라이프", "KB_GOLDENLIFE_2026"),
+    ("슬기로운", "KB_SEULGI_2023"),
+    ("자녀", "KB_CHILD_2021"),
+    ("운전자", "KB_DRIVER_2026"),
+]
+
 
 def is_terms_query(query: str) -> bool:
     """청약철회·갱신 등 계약조건을 묻나 — /answer의 terms SQL 라우팅 게이트."""
     return bool(_TERMS_INTENT_RE.search(query))
+
+
+def resolve_base_product_id(query: str) -> str | None:
+    """질의의 상품명 키워드로 base 상품ID 해소(없으면 None → coverage_hint LIKE 폴백)."""
+    for kw, pid in _PRODUCT_HINTS:
+        if kw in query:
+            return pid
+    return None
 
 
 def coverage_hint(query: str) -> str | None:

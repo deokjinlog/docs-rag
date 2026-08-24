@@ -46,8 +46,15 @@ def extract_terms(doc: str) -> dict:
     cyc = re.search(r'(\d+)\s*년\s*마다\s*갱신', md)          # 갱신 주기
     t["renewal_cycle_years"] = int(cyc.group(1)) if cyc else None
 
-    term = re.search(r'(\d+)\s*년\s*만기', md)                # 만기(보험기간)
-    t["term_years"] = int(term.group(1)) if term else None
+    # 만기 — '보험기간은 N년만기' 선언만. KB 간편건강보험은 갱신구조 설명에 예시 만기가 흩어져
+    # ("예 시 48세가 5년만기로 80세까지 갱신") 홑 'N년만기'로 잡으면 예시값을 상품 만기로 오추출(FP).
+    # 보험기간 앵커 + 예시(예/피보험자) 네거티브 가드로 라이나 '보험기간은 10년만기'만 남기고 예시 배제.
+    t["term_years"] = None
+    for m in re.finditer(r'보험기간[은는:]?\s*(\d+)\s*년\s*만기', md):
+        if any(k in md[max(0, m.start() - 15):m.start()] for k in ("예", "피보험자")):
+            continue                                          # 예시 문맥 → 상품 만기 아님(precision-first)
+        t["term_years"] = int(m.group(1))
+        break
     return t
 
 

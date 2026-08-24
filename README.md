@@ -127,12 +127,12 @@ flowchart LR
 |---|---|---|---|
 | **자립 `make check`** | parse | 50/50 | 조 수·제목·구조·항호목 세분 |
 | (배포 관문·docker 불필요) | payout · payout_qa | 15 · 5/5 | 지급률·감액·경과기간 / SQL 질의 |
-| | terms | 6 TP·2 TN | 청약철회·갱신·만기 (특약 준용 NULL=TN) |
+| | terms | 14 TP·10 TN | 청약철회·갱신·만기 (특약 준용 NULL=TN). **KB 4개 보통약관 추가**(청약철회 15일·갱신형; 예시 만기 오추출 정밀화로 term_years NULL) |
 | | coverage | 7/7 | 별표3 ICD 3-값(담보특정성·제외우선·판정불가) |
 | | exclusion · catalog | 12 사유 · 13 담보 | 면책 사유 태그 / 담보 멤버십 |
 | | completeness · reconcile | 6/6 · 4/4 | 완결성 recall / 정합(보장↔payout) |
 | **스택 게이트** | retrieval | 25 (recall@5=1.0) | recall@k·MRR (원문 앵커 라벨) |
-| | sql_routing · routing | 16 · 16 (acc 1.0) | /answer SQL 분기 / 5-type 분류기 |
+| | sql_routing · routing | 20 · 16 (acc 1.0) | /answer SQL 분기(+KB terms 브랜드해소 4) / 5-type 분류기 |
 | | ragas | 10 | Faithfulness·Relevancy (judge 분리) |
 | **사이드카·드래프트** | payout_direct | 5 | 다이렉트 불규칙표 LLM폴백 게이트 |
 | | retrieval_newcorpus | 10 | 새 회사 검색(draft, 앵커=답 청크 verbatim) |

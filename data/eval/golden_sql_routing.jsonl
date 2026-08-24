@@ -14,3 +14,7 @@
 {"query":"충치는 어떻게 정의되나요?","route":"rag","kind":"definition","note":"정의"}
 {"query":"중환자실 특약은 뭐가 면책인가요?","route":"sql","kind":"exclusion","note":"면책 게이트+담보해소"}
 {"query":"소득보장수술 특약 지급 안 되는 사유는?","route":"sql","kind":"exclusion","note":"면책"}
+{"query": "KB 골든라이프 청약철회 언제까지 가능한가요?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_GOLDENLIFE base(청약철회 15일)"}
+{"query": "슬기로운 간편실속 갱신형인가요?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_SEULGI"}
+{"query": "KB 운전자보험 청약 철회 며칠 이내인가요?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_DRIVER"}
+{"query": "희망플러스 자녀보험 청약철회 기간은?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_CHILD(base명 OCR 뭉개짐→명시맵)"}
