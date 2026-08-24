@@ -22,7 +22,7 @@
 - 검색 recall@5=1.00 · @3=0.96 · @1=0.76 · MRR=0.86 (25문항·5문서). 도메인 어휘가 일반보다 우위(recall@1 0.84 vs 0.50).
 - SQL 경로 지연 p50 ~6ms(GPU 무관) · 부하 피크 ~183 QPS(에러 0).
 - **end-to-end 서빙 검증(2026-08-20, 스택 복구 후)**: `/retrieve`가 확장 17배 코퍼스(13,080벡터)+회사미상 특약을 정상 검색 — "자동차사고 변호사선임비용"→회사미상 R14 변호사선임 특약 p395 **rerank 0.992**. 검색 품질(rerank 0.97~0.99)은 GPU/CPU 무관.
-- **로컬 지연 진단 + GPU 토글(2026-08-20)**: trace 분해로 ~22s/쿼리 원인 확정 — **rerank 18,452ms(83%)** + query_embed 3,619ms(16%) + qdrant 49ms. 리랭크는 이미 배치(`reranker.predict(pairs)`)라 CPU CrossEncoder(560M) 자체 비용. 모델 재로딩 버그 아님(Loading weights 0회). **레버 = GPU**: lite 모드(vLLM off)에선 8GB GPU가 놈(518/8188MiB) → `docker-compose.retrieve-gpu.yml`(api를 CUDA_VISIBLE_DEVICES=0 + nvidia 예약, `make retrieve-gpu`)로 임베더·리랭커 GPU 이관 시 sub-second 예상. `make ingest-gpu` 미러 패턴, vLLM 복귀 시 `docker compose up -d api`로 CPU 반납. **실측은 Docker Desktop WSL 통합 드롭으로 보류**(docker.sock 소실 — 통합 재활성 후 `make retrieve-gpu` 한 줄).
+- **✅ 로컬 지연 진단 + GPU 토글 실측 완료(2026-08-20)**: trace 분해로 ~22s/쿼리 원인 확정 — rerank 18,452ms(83%)+embed 3,619ms(16%). `make retrieve-gpu`(api를 CUDA_VISIBLE_DEVICES=0+nvidia 예약, `docker-compose.retrieve-gpu.yml`)로 GPU 이관 **실측: 22s → ~1s(0.6~2.4s, ~20x)** — embed 66x(3.6s→0.055s)·rerank ~15x(워밍 후). 단 재시작 후 첫 몇 쿼리는 CUDA 커널 워밍업 5~12s 뒤 안정. 검색 품질(rerank 0.98+) device 무관. vLLM 복귀 시 `docker compose up -d api`로 CPU 반납. `make ingest-gpu` 미러 패턴.
 - 병목 판정 = `generation-leaning(잠정, BLOCKED)` — retrieval 배제, 생성측은 비편향 judge RAGAS 재측정 필요(GPU+키).
 - 유닛 199 + 통합 21 · 파싱골든 50 · 결정론골든 10종.
 

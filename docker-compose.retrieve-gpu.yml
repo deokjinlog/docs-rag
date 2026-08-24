@@ -1,6 +1,8 @@
 # retrieve 가속 override — api의 임베더·리랭커를 GPU로.
 # lite 모드(vLLM off)에선 GPU가 완전히 놀므로 임베더·리랭커에 붙이면 /retrieve·/answer(RAG) 지연이
-# 급감한다 — 실측 CPU: query_embed 3.6s + rerank 18.5s = 22s → GPU sub-second. 기본 정책
+# 급감한다 — **실측(2026-08-20, RTX 4060 8GB)**: CPU 22s(embed 3.6s+rerank 18.5s) → GPU **~1s
+# (0.6~2.4s, ~20x)**. 내역: embed 3.6s→0.055s(66x)·rerank 18.5s→~1s. 단 재시작 후 첫 몇 쿼리는
+# CUDA 커널 워밍업으로 5~12s(shape별 컴파일) 뒤 안정. 검색 품질(rerank 0.98+)은 device 무관. 기본 정책
 # (임베더·리랭커 CPU·GPU는 vLLM 전용)은 vLLM 경합 회피가 이유라 lite엔 성립 안 함. full(answer)
 # 복귀로 vLLM을 올릴 땐 이 override를 빼면 CPU로 자동 복귀(GPU 반납 → vLLM 독점).
 #
