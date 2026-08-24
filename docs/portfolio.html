@@ -237,12 +237,12 @@
       <div class="ro">
         <div class="v mono">1.00</div>
         <div class="k">SQL 라우팅 정확도 · 검색 recall@5</div>
-        <div class="n mono">16문항 골든 · 검색 25문항 · 5개사 코퍼스</div>
+        <div class="n mono">26문항 골든(6경로) · 검색 25문항 · 5개사 코퍼스</div>
       </div>
       <div class="ro">
-        <div class="v mono">10<small>/10</small></div>
+        <div class="v mono">12<small>/12</small></div>
         <div class="k">추출·조립 골든 green (배포 게이트)</div>
-        <div class="n mono">207 tests · CI green · 스택 없이 자립</div>
+        <div class="n mono">244 tests · CI green · 스택 없이 자립</div>
       </div>
     </div>
   </header>
@@ -297,8 +297,8 @@
         <!-- SQL route -->
         <path class="edge-det" d="M288,150 C330,150 330,64 372,64" marker-end="url(#ahd)"/>
         <rect class="box-det" x="376" y="38" rx="9" width="188" height="54"/>
-        <text class="t" x="392" y="60" font-size="12.5" font-weight="620" fill="var(--det)">SQL · 결정론</text>
-        <text class="lbl" x="392" y="79" font-size="10.5">얼마 · 언제 · 보장 · 면책</text>
+        <text class="t" x="392" y="60" font-size="12.5" font-weight="620" fill="var(--det)">SQL · 결정론 6경로</text>
+        <text class="lbl" x="392" y="79" font-size="10.5">얼마·언제·보장·담보·면책기간·면책</text>
         <path class="edge-det" d="M564,65 L604,65" marker-end="url(#ahd)"/>
         <rect class="box" x="608" y="40" rx="8" width="316" height="50"/>
         <text class="tt mut" x="624" y="60" font-size="10.5">payout_rule · product · coverage_range</text>
@@ -360,7 +360,7 @@
       <div class="tile">
         <div class="label">SQL 라우팅 정확도 <span class="state good">green</span></div>
         <div class="val">1.00</div>
-        <div class="sub">16문항 골든 · payout/terms/coverage vs RAG 오라우팅 0</div>
+        <div class="sub">26문항 골든 · 6경로(payout/terms/coverage/catalog/waiting/exclusion) vs RAG 오라우팅 0</div>
       </div>
       <div class="tile">
         <div class="label">검색 recall@5 · MRR <span class="state good">green</span></div>
@@ -369,13 +369,13 @@
       </div>
       <div class="tile">
         <div class="label">추출·조립 골든 <span class="state good">green</span></div>
-        <div class="val">10<small>/10</small></div>
-        <div class="sub">파싱·payout·면책·완결성·reconcile — 스택 없이 자립(make check)</div>
+        <div class="val">12<small>/12</small></div>
+        <div class="sub">파싱·payout·terms·coverage·catalog·면책기간·완결성 — 스택 없이 자립(make check)</div>
       </div>
       <div class="tile">
         <div class="label">테스트 · CI <span class="state good">green</span></div>
-        <div class="val">207</div>
-        <div class="sub">유닛 207 + 통합 21 · GitHub Actions가 push마다 스택 없이 자동 게이트</div>
+        <div class="val">244</div>
+        <div class="sub">유닛 244(6경로 게이트 상호작용 포함) + 통합 · GitHub Actions가 push마다 스택 없이 자동 게이트</div>
       </div>
     </div>
   </section>
@@ -410,10 +410,11 @@
       </div>
       <div class="card">
         <div class="num mono">CASE 04</div>
-        <h3>복합약관 — 될 것과 안 될 것을 갈랐다</h3>
-        <p>보통약관 + 특약 수십 개인 복합약관을 <b>조-리셋 불변식</b>으로 분해. 새 회사 2곳은
-        <span class="delta">42조 → 231조</span> 특약을 복원해 실 DB 적재. KB는 파고든 끝에 <b>ODL 추출 중복</b>이
-        진짜 블로커임을 증명 — 파서로 안 풀릴 걸 조사로 확인해 헛수고를 막았다.</p>
+        <h3>"안 될 것" 판정을 뒤집었다 — KB 5번째 회사</h3>
+        <p>1237p 복합약관 KB는 처음엔 "ODL 중복이 블로커"로 봤지만, 파고드니 원인은
+        <b>2단 레이아웃을 가로질러 읽어 조가 뒤섞인 것</b>. 레이아웃 트리 좌표로 읽기순서를 복원하니
+        특약 <span class="delta">761개 · 5,309조</span>가 열렸다. 위에 결정론 4경로(계약조건·담보목록·면책기간/감액·암 ICD)를
+        얹어 <b>라이브 배포</b>까지. "얼마?"의 기저 지급률만은 가입금액이라 <b>정직하게 RAG로 남겼다.</b></p>
       </div>
     </div>
   </section>
@@ -428,7 +429,8 @@
           <li><b>못 뽑으면 NULL → RAG.</b> "확신에 찬 오답"을 0으로. recall이 아니라 precision을 보증한다.</li>
           <li><b>면책 강제첨부.</b> "얼마?"에 지급률만 답하면 소비자 손해 → 지급 제외 사유를 항상 붙인다.</li>
           <li><b>준용 NULL·완결성.</b> 특약 청약철회는 "제19조 준용 소관 — 주계약 미확보로 확인 필요"로 정직하게 남긴다.</li>
-          <li><b>3-값 보장판정.</b> 별표3 ICD 코드로 보장/미보장→리다이렉트/<b>판정불가</b> — 억지 판정 안 함.</li>
+          <li><b>담보 특정성.</b> 같은 코드도 담보 따라 갈린다 — KB 암진단비 = 악성신생물 − 유사암(C44·C73) 범위 뺄셈으로 <span class="mono">C73→미보장→갑상선암</span> 리다이렉트. 3-값(보장/미보장/<b>판정불가</b>).</li>
+          <li><b>부재를 단정하지 않는다.</b> "이 담보 있어?"에 못 찾으면 "없다" 대신 RAG로 — 동의어·다른 표기로 있을 수 있어 확신에 찬 오답을 피한다.</li>
         </ul>
       </div>
       <div>
@@ -454,8 +456,8 @@
       </div>
       <p class="foot-note">
         결정론(관계형 값·별표 표)은 PostgreSQL, 확률적(조 본문 벡터)은 Qdrant — 저장·회수 2축 분리.
-        로컬 RTX 4060 8GB / WSL2 단일 GPU 프로파일. 코퍼스 5개 회사·13,080청크(복합약관 조-리셋 분해로 새 회사 특약 실 DB 적재).
-        모든 수치는 2026-08-13~20 실측(<span class="mono">data/bench/</span>·<span class="mono">data/eval/</span> 보존).<br>
+        로컬 RTX 4060 8GB / WSL2 단일 GPU 프로파일. 코퍼스 5개 회사 · 관계형 product 853 · clause 5,309(복합약관 조-리셋/읽기순서 복원으로 KB 761상품 특약까지 실 DB 적재).
+        모든 수치는 2026-08-13~24 실측(<span class="mono">data/bench/</span>·<span class="mono">data/eval/</span> 보존).<br>
         <a href="https://github.com/deokjinlog/docs-rag">github.com/deokjinlog/docs-rag</a> — 아키텍처·도메인 모델·평가 방법론 문서 포함.
       </p>
     </div>
