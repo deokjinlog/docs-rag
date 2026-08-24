@@ -73,7 +73,7 @@
 - `scripts/extract_payout_llm.py` — 불규칙 표 LLM 폴백 사이드카(다이렉트 병합셀·연령축, 룰베 0.40 vs LLM 1.0 게이트)
 - `scripts/load_payout.py` · `scripts/query_payout.py` — payout_rule SQL 적재기(dry-run) + SQL경로 질의엔진(QA 5/5)
 - `scripts/extract_terms.py` — 계약조건 "언제까지"(청약철회·갱신·만기) 추출, 골든 `golden_terms.jsonl` 8/8(특약 준용 NULL=TN)
-- `scripts/assemble_answer.py` — 답변 조립기 + 완결성 게이트, 골든 `golden_completeness.jsonl` 5/5(별표3 ICD 홉 연결 후)
+- `scripts/assemble_answer.py` — 답변 조립기 + 완결성 게이트, 골든 `golden_completeness.jsonl` 6/6(별표3 ICD 홉 연결 후)
 - `scripts/judge_coverage.py` — 별표3 ICD 보장판정(담보특정성·제외우선·판정불가), 골든 `golden_coverage.jsonl` 7/7
 - `assemble_answer.py --reconcile` — 사실 화해(보장판정이 payout 게이팅·리다이렉트), 골든 `golden_reconcile.jsonl` 4/4
 - `scripts/extract_exclusion_reasons.py` — 면책 사유 목록(고의·전쟁·위험활동 등 표준 태그), 골든 `golden_exclusion.jsonl` 12/12
@@ -115,7 +115,7 @@
 - **완결성 게이트**: 답 내보내기 전 "필수 요소 다 찼나?" 체크 → 누락 시 보충 or 명시.
 - 홉의 대부분은 **인덱스타임에 엣지로 해소됨**(clause_ref·exclusion_map·parent_policy_id) → 런타임은 값싼 순회+조립.
 
-**구현/측정**: `scripts/assemble_answer.py`(엣지 조립기) + `data/eval/golden_completeness.jsonl`(질문→필수요소집합). 채점 = 필수요소 recall. 완결성 게이트가 처음엔 4/5로 **별표3 ICD 판정 갭을 검출** → 그 홉(`judge_coverage.py`)을 만들어 연결하니 **5/5·recall 1.00**. 이것이 우리가 논의한 **멀티홉/에이전트 골든셋**의 실체 — 게이트가 "뭘 더 만들지"를 가리킨다.
+**구현/측정**: `scripts/assemble_answer.py`(엣지 조립기) + `data/eval/golden_completeness.jsonl`(질문→필수요소집합). 채점 = 필수요소 recall. 완결성 게이트가 처음엔 4/5로 **별표3 ICD 판정 갭을 검출** → 그 홉(`judge_coverage.py`)을 만들어 연결하니 **6/6·recall 1.00**(현재). 이것이 우리가 논의한 **멀티홉/에이전트 골든셋**의 실체 — 게이트가 "뭘 더 만들지"를 가리킨다.
 
 **별표3 ICD 보장판정(`judge_coverage.py`, 7/7)**: 약관은 병명이 아니라 KCD 코드 범위로 보장을 정의(암=C00~C97+특정D). 판정 규칙: ①담보 특정성(C=일반암 / D00~D09=제자리암 / D37~D48=경계성 — 같은 코드도 담보 따라 갈림, D05는 암진단자금엔 미보장·제자리암엔 보장) ②제외 우선 ③3-값(보장/미보장/**판정불가**=억지 판정 안 함). 코드 모델=(문자,주,부) 튜플 구간 포함. 병명→코드는 별도 계층(판정기는 코드만).
 

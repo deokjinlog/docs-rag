@@ -118,6 +118,29 @@ flowchart LR
 
 > **측정이 병목을 특정하고 → 수정을 검증한다.** 예: 청킹 heading만 고쳤을 땐 recall이 안 움직였는데, 측정이 진짜 레버(리랭커 입력=임베딩 텍스트 일관성)를 가리켜 `recall@1 0.58→0.83`. 복합약관에선 조 제목을 `- 제N조(제목)` 소괄호 리스트로 뱉어 조가 붕괴하던 것을 승격 규칙으로 해소. 실측 기록은 [eval-and-golden.md §9](docs/eval-and-golden.md)·[설계 회고](docs/design-retrospective.md).
 
+<details>
+<summary><b>골든셋 전수 — 16파일</b> (단계별 정답+근거 라벨, <code>data/eval/golden_*.jsonl</code>)</summary>
+
+측정이 자산이라 골든을 단계별로 쌓았다. 자립 9종은 `make check`(회귀 시 exit 1 = 배포 관문), 검색·라우팅·생성은 스택 게이트로 분리.
+
+| 게이트 | 골든 | 통과 | 측정 |
+|---|---|---|---|
+| **자립 `make check`** | parse | 50/50 | 조 수·제목·구조·항호목 세분 |
+| (배포 관문·docker 불필요) | payout · payout_qa | 15 · 5/5 | 지급률·감액·경과기간 / SQL 질의 |
+| | terms | 6 TP·2 TN | 청약철회·갱신·만기 (특약 준용 NULL=TN) |
+| | coverage | 7/7 | 별표3 ICD 3-값(담보특정성·제외우선·판정불가) |
+| | exclusion · catalog | 12 사유 · 13 담보 | 면책 사유 태그 / 담보 멤버십 |
+| | completeness · reconcile | 6/6 · 4/4 | 완결성 recall / 정합(보장↔payout) |
+| **스택 게이트** | retrieval | 25 (recall@5=1.0) | recall@k·MRR (원문 앵커 라벨) |
+| | sql_routing · routing | 16 · 16 (acc 1.0) | /answer SQL 분기 / 5-type 분류기 |
+| | ragas | 10 | Faithfulness·Relevancy (judge 분리) |
+| **사이드카·드래프트** | payout_direct | 5 | 다이렉트 불규칙표 LLM폴백 게이트 |
+| | retrieval_newcorpus | 10 | 새 회사 검색(draft, 앵커=답 청크 verbatim) |
+| | golden(구 SQL추출) | 7 | 담보명·계약유형·면책기간 |
+
+방법론(필드별 채점·실패분석 루프·precision-first) 상세는 [eval-and-golden.md](docs/eval-and-golden.md).
+</details>
+
 ## 설계 철학 · 한계
 
 > **측정된 것만 메인 경로에.** 검증 안 된 컴포넌트를 끼우면 false positive가 신뢰도를 오히려 깎는다.
