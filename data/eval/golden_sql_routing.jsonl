@@ -18,3 +18,7 @@
 {"query": "슬기로운 간편실속 갱신형인가요?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_SEULGI"}
 {"query": "KB 운전자보험 청약 철회 며칠 이내인가요?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_DRIVER"}
 {"query": "희망플러스 자녀보험 청약철회 기간은?", "route": "sql", "kind": "terms", "note": "KB 브랜드 해소→KB_CHILD(base명 OCR 뭉개짐→명시맵)"}
+{"query": "골든라이프에 파킨슨병진단비 담보 있어?", "route": "sql", "kind": "catalog", "note": "KB 특약목록 멤버십 적중"}
+{"query": "슬기로운 간편실속에 대상포진진단비 담보 있어?", "route": "sql", "kind": "catalog", "note": "KB catalog 멤버십"}
+{"query": "운전자보험에 교통상해사망 보장돼?", "route": "sql", "kind": "catalog", "note": "KB catalog 멤버십(보장돼 의도)"}
+{"query": "골든라이프에 레진충전 담보 있어?", "route": "rag", "kind": "catalog-miss", "note": "catalog 미적중→부재 단정 안 하고 RAG(precision)"}

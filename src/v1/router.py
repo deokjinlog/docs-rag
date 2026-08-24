@@ -48,8 +48,10 @@ from .rag.coverage_sql import (
     effective_coverage,
 )
 from .rag.exclusion_sql import is_exclusion_query, format_exclusions
+from .rag.catalog_sql import is_catalog_query, find_covered, format_catalog
 from .schemas import (
     AnswerRequest,
+    CatalogRequest,
     CoverageRequest,
     DocumentCreate,
     EmbedRequest,
@@ -365,6 +367,28 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                         "sources": [],
                         "route": {"strategy": "sql", "query_type": route.query_type.value},
                         "citations": [{"claim": _canswer, "refs": [_code], "supported_by_chunks": []}],
+                    }
+
+            # SQL 경로 — 담보 catalog 멤버십("이 상품에 X 담보 있어?"). coverage(ICD 코드) 뒤 —
+            # 코드 없는 "보장돼?"에 브랜드+담보명이 있으면 특약 목록에서 결정론 확정. 못 찾으면 부재
+            # 단정 안 하고 RAG(동의어·다른 표기 가능성, precision-first).
+            if SQL_ROUTE_ENABLED and is_catalog_query(body.query):
+                _cpid = resolve_base_product_id(body.query)
+                _catalog = CoverageRepository(db).list_catalog(_cpid) if _cpid else []
+                _covered = find_covered(_catalog, body.query) if _catalog else []
+                if _covered:
+                    _caanswer = format_catalog(_covered)
+                    rec.route = {**(rec.route or {}), "strategy": "sql"}
+                    api_logger.info(f"SQL 경로(catalog) 적중: {_cpid} → {_covered}")
+                    background_tasks.add_task(write_trace, rec)
+                    return {
+                        "trace_id": rec.trace_id,
+                        "query": body.query,
+                        "answer": _caanswer,
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                        "sources": [],
+                        "route": {"strategy": "sql", "query_type": route.query_type.value},
+                        "citations": [{"claim": _caanswer, "refs": [_cpid], "supported_by_chunks": []}],
                     }
 
             # SQL 경로 — 면책 상세("뭐가 면책?"). coverage(코드 판정) 뒤 — "보장 안 되는 경우?"는
@@ -690,6 +714,28 @@ def exclusion(body: ExclusionRequest, db: Session = Depends(get_db)):
         "matched": bool(exclusions) or bool(resolution and "준용" in resolution),
         "answer": format_exclusions(exclusions, resolution),   # 사유 + 준용 완결성
         "exclusions": exclusions,   # 근거 면책 조 [{jo, title, body}]
+    }
+
+
+@router.post("/catalog", summary="결정론 담보 catalog 멤버십 (SQL 경로)", tags=["Retrieval"])
+def catalog(body: CatalogRequest, db: Session = Depends(get_db)):
+    """3경로 라우터의 SQL 경로 — "이 상품에 X 담보 있어? / 뭐 보장해?"를 특약 목록에서 결정론으로.
+
+    KB 복합약관은 특약 1개=담보 1개라 특약 목록이 곧 담보 catalog. 담보 지목이 catalog에 있으면
+    "있음" 확정, 못 찾으면 부재 단정 안 하고 matched=false→RAG(동의어·다른 표기 가능, precision-first).
+    상품은 브랜드 키워드로 해소(`product_id`도 가능). 로직 `rag/catalog_sql.py`.
+    """
+    _apply_input_guard(body)
+    pid = body.product_id or resolve_base_product_id(body.query)
+    names = CoverageRepository(db).list_catalog(pid) if pid else []
+    covered = find_covered(names, body.query) if names else []
+    return {
+        "query": body.query,
+        "route": "sql",
+        "matched": bool(covered),
+        "answer": format_catalog(covered),
+        "covered": covered,      # 적중 담보명. miss면 []
+        "catalog_size": len(names),   # 근거: 해당 상품 담보 총수
     }
 
 

@@ -434,3 +434,16 @@ class CoverageRepository:
         for r in self.db.execute(text(sql), params).mappings():
             out.setdefault(r["coverage"], []).append(r["code_token"])
         return out
+
+    def list_catalog(self, base_product_id: str) -> list[str]:
+        """base 상품의 담보 catalog = 그 상품의 특약 이름들(parent_policy_id=base). 없으면 [].
+
+        KB 복합약관은 특약 1개 = 담보 1개(product_name='N. 담보명') → 특약 목록이 곧 담보 catalog.
+        멤버십('이 담보 있어?')의 결정론 소스. 정규화(번호·괄호 제거)는 catalog_sql이 담당(순수).
+        """
+        from sqlalchemy import text
+        sql = ("SELECT product_name FROM product "
+               "WHERE parent_policy_id = :pid AND product_name IS NOT NULL "
+               "ORDER BY product_id")
+        return [r["product_name"] for r in
+                self.db.execute(text(sql), {"pid": base_product_id}).mappings()]

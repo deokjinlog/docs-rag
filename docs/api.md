@@ -16,6 +16,7 @@ Base URL: `/api/v1/docs-rag`
 | POST | `/terms` | 결정론 계약조건 질의 (청약철회·갱신) | O |
 | POST | `/coverage` | 결정론 보장판정 (별표3 ICD 3-값) | O |
 | POST | `/exclusion` | 결정론 면책 상세 (지급 제외 사유) | O |
+| POST | `/catalog` | 결정론 담보 멤버십 (이 상품에 X 담보 있어?) | O |
 | POST | `/embeddings` | 텍스트 → 벡터 변환 | O |
 | POST | `/feedback` | 쿼리 피드백 수집 (trace_id 기반) | X (매번 새 row) |
 
@@ -420,6 +421,36 @@ if (!r.matched) r = await post('/answer', {query, service_code: '01'});  // 결�
   "exclusions": [{"jo": 7, "title": "보험금을 지급하지 않는 사유", "body": "…"}]
 }
 ```
+
+---
+
+## 8-1. POST /catalog
+
+**결정론 담보 멤버십 경로** — "이 상품에 X 담보 있어? / 뭐 보장해?"를 **특약 목록**에서 결정론으로. coverage(별표3 ICD "이 코드 보장돼?")·payout("얼마")와 다른 축 = **담보 존재 여부**(가장 흔한 보장 질문). KB 복합약관은 특약 1개=담보 1개라 특약 목록이 곧 담보 catalog(`CoverageRepository.list_catalog`). 질의의 담보가 catalog에 있으면 "있음" 확정, **못 찾으면 부재를 단정하지 않고** `matched=false`→RAG(동의어·다른 표기로 있을 수 있어 "없다"는 확신에 찬 오답). 상품은 브랜드 키워드로 해소(`resolve_base_product_id`, `product_id`도 가능). 로직 [`rag/catalog_sql.py`](../src/v1/rag/catalog_sql.py).
+
+### Request
+
+```json
+{ "query": "골든라이프에 파킨슨병진단비 담보 있어?", "service_code": "01", "product_id": "KB_GOLDENLIFE_2026" }
+```
+
+### Response (200)
+
+```json
+{
+  "query": "골든라이프에 파킨슨병진단비 담보 있어?",
+  "route": "sql",
+  "matched": true,
+  "answer": "네, 보장 담보에 있습니다: 파킨슨병진단비 (근거: 해당 특약)",
+  "covered": ["파킨슨병진단비"],
+  "catalog_size": 69
+}
+```
+
+| 필드 | 조건 | 설명 |
+|------|------|------|
+| covered | 항상 | 질의에서 확정한 담보명(정규화). 미적중이면 `[]`→matched=false→RAG |
+| catalog_size | 항상 | 해당 base 상품의 담보(특약) 총수 — 근거 |
 
 ---
 

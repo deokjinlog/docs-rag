@@ -8,7 +8,7 @@
 
 | 계층 | 구현 | 게이트/검증 |
 |---|---|---|
-| **결정론 3경로 라우터** | `/answer` 자동분기 → payout·terms·coverage·exclusion (SQL, LLM 미사용). **terms는 KB 5개사 확장**(상품명 브랜드 해소 `resolve_base_product_id`) | `make eval-sql-routing` **20문항**(KB terms 4 추가) accuracy 1.0 — 라이브 게이트는 api 재기동 후 `--update-baseline` |
+| **결정론 3경로 라우터** | `/answer` 자동분기 → payout·terms·coverage·**catalog**·exclusion (SQL, LLM 미사용). **KB 5개사 확장**: terms(브랜드 해소)·담보 catalog 멤버십(`/catalog`, 특약목록) | `make eval-sql-routing` **24문항**(KB terms 4·catalog 4) accuracy 1.0 — 라이브 게이트는 api 재기동 후 `--update-baseline` |
 | **RAG 서빙** | Dense(BGE-M3)+BM25+RRF+CrossEncoder rerank+CRAG+Self-RAG | `make eval-retrieval` recall@5=1.0·MRR=0.86 |
 | **관계형 추출** | product·clause(회사미상+KB 특약 포함 **853·5309**, 5개사)·payout_rule·coverage_range·annex_row (실 DB). **KB 확장: terms(청약철회 15일·갱신)·담보 catalog(특약제목 46~211개/상품)** | `make check` 골든 10종 green(terms 24·catalog 30, gate 복합약관 인지) |
 | **파싱** | 조 파서 + 항/호/목 세분(`parse_subitems`) + **복합약관 분해**(`parse_compound` 조-리셋) + CLI 정밀 뷰 | 파싱골든 **50/50** + 유닛(structure·subitems·subcontracts) |

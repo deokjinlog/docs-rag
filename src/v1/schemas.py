@@ -75,6 +75,13 @@ class ExclusionRequest(BaseModel):
     product_id: str | None = Field(None, examples=["LINA_ICU_2024"], max_length=64)
 
 
+class CatalogRequest(BaseModel):
+    """POST /catalog 요청 body — 담보 존재 멤버십("이 상품에 X 담보 있어?")."""
+    query: str = Field(..., examples=["골든라이프에 파킨슨병진단비 담보 있어?"], max_length=2000)
+    service_code: str | None = Field(None, examples=["01"], max_length=10)
+    product_id: str | None = Field(None, examples=["KB_GOLDENLIFE_2026"], max_length=64)
+
+
 class FeedbackRequest(BaseModel):
     """POST /feedback 요청 body.
 
