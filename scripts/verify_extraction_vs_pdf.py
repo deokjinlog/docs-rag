@@ -67,6 +67,15 @@ def _probe(row: dict, kind: str):
             return [[f"90일미만{e}%"]]
     if kind == "kb_coverage":
         return [[_norm(row["code"])]]                                    # 코드가 별표3에 실재하나
+    if kind == "coverage":
+        return [[_norm(row["code"])]]                                    # 다이렉트 별표3 코드 실재
+    if kind == "payout":
+        if row.get("field") == "rate_pct" and e is not None:
+            return [[f"{e}%", f"{e} %"]]                                  # 지급률이 지급표에 실재
+        if row.get("field") == "per_unit" and e:
+            return [[_norm(str(e))]]                                      # 1일당/1회당 등
+        if row.get("field") == "limit_days" and e:
+            return [[f"{e}일한도", f"{e}일"]]
     return None
 
 
@@ -104,7 +113,9 @@ def main():
     tf = tn = tno = 0
     for gf, kind in [("golden_terms.jsonl", "terms"),
                      ("golden_waiting.jsonl", "waiting"),
-                     ("golden_kb_coverage.jsonl", "kb_coverage")]:
+                     ("golden_kb_coverage.jsonl", "kb_coverage"),
+                     ("golden_coverage.jsonl", "coverage"),
+                     ("golden_payout.jsonl", "payout")]:
         f, n, no = verify(gf, kind)
         tf += f; tn += n; tno += no
     print("-" * 68)
