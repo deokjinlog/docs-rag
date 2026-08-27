@@ -105,6 +105,24 @@ https://www.kbinsure.co.kr/CG802030003.ec?fileNm={상품코드}_{공시버전}_1
 
 > 로컬 스택 제약도 병존: postgres/모델 마운트가 WSL에서 자주 내려가 load·서빙이 간헐 중단([[wsl-restart-breaks-docker-stack]]). 대량 ingest는 스택 안정 확인 후.
 
+## 실손 vertical 수집 완료 (2026-08 · 직접 다운로드 · 3개사)
+
+**돌파구**: KB 검색 반복엔 봇 차단이 걸렸지만 **각 사 공식 직접 PDF URL은 단일 요청이라 안 걸림** →
+실손 약관을 직접 다운로드로 확보(사람 큐레이션 불필요). 새 보종(실손) + 새 회사 3사 = 코퍼스 확장.
+
+| 회사 | 상품 | 크기 | 출처 URL (provenance) |
+|---|---|---|---|
+| 삼성화재 | 실손의료비보험(2501) | 2.2MB | samsungfire.com/publication/pdf/ZPB293050_0_20250101_file1.pdf |
+| 삼성화재 다이렉트 | 실손의료비보험(2605) | 2.4MB | direct.samsungfire.com/docs/realloss.pdf |
+| 현대해상 | 실손의료비보장보험(Hi1904) | 3.0MB | hi.co.kr/FileActionServlet/…/(무)실손의료비보장보험(갱신형)(Hi1904)_인쇄용약관.pdf |
+| DB손해보험 | 프로미라이프 실손의료비보험(2101) | 4.8MB | idbins.com/pcweb/…/실손의료비보험2101.pdf |
+| DB손해보험 다이렉트 | 참좋은종합보험(2301, 실손 특약 포함) | 4.5MB | directdb.co.kr/doc/pdf/terms/ltm_direct_cm_total2301.pdf |
+
+- 5개 **distinct md5**(변형/중복 아님). `data/input/`에 저장(gitignore — PDF 미커밋, provenance만 기록).
+- **KPUB `/file/download/N.knia`는 8p 요약본**이라 full 약관 아님 — full 약관은 각 사 사이트에만.
+- 메리츠는 공식 직접링크 불명(3rd-party만) → 공식 도메인만 채택(정직).
+- 다음: ODL 추출→파싱→게이트로 **실손 보종이 우리 파서에 일반화되는지** 스케일 테스트(별 보종=별 표준약관).
+
 ## 참고 (검증 링크)
 - 손해보험협회 통합공시: https://kpub.knia.or.kr/main.do · 소비자포털 https://consumer.knia.or.kr/disclosure.do
 - 생명보험협회 비교공시: http://pub.insure.or.kr
