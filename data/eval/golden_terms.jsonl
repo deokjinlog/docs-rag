@@ -22,3 +22,5 @@
 {"doc": "KB_희망플러스자녀보험II(21.07)_약관", "field": "is_renewable", "expected": true, "evidence": "갱신형 계약 포함(갱신 시 보험료 변동)", "labeler": "최덕진"}
 {"doc": "KB_희망플러스자녀보험II(21.07)_약관", "field": "renewal_cycle_years", "expected": null, "evidence": "'N년마다 갱신' 미기재(갱신주기 명시 없음) → NULL", "labeler": "최덕진"}
 {"doc": "KB_희망플러스자녀보험II(21.07)_약관", "field": "term_years", "expected": null, "evidence": "보험기간 선언 없이 예시 만기만('예 시 …N년만기로 갱신') → 상품 만기 아님, NULL(precision-first)", "labeler": "최덕진"}
+{"doc": "보험약관_상해질병보장_회사미상", "field": "cooling_off_days", "expected": 15, "evidence": "계약자는 청약을 한 날부터 15일 이내에 그 청약을 철회할 수 있습니다(진단계약 30일은 예외)", "labeler": "최덕진"}
+{"doc": "보험약관_수술비보장_회사미상", "field": "cooling_off_days", "expected": 15, "evidence": "제1회 보험료를 납입한 날부터 15일 이내에 그 청약을 철회(‘철회 받은 날부터 3일’은 반환기일이지 청약철회 아님)", "labeler": "최덕진"}

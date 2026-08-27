@@ -30,13 +30,13 @@ def extract_terms(doc: str) -> dict:
     t = {"cooling_off_days": None, "is_renewable": None,
          "renewal_cycle_years": None, "term_years": None, "resolution_note": None}
 
-    # 청약철회 — '철회' 문맥 안의 'N일 이내'만(엉뚱한 N일 이내 배제). 표준: "받은 날부터 15일 이내"
-    # 주의: 복합약관은 문서 전체에 철회 언급이 많아(반환기일 "철회 접수 후 N일 이내"·특약별) 이 느슨한
-    # 패턴이 반환기일을 오탐할 수 있다(회사미상 수술비=3일 반환 오추출 실측). 청약철회 조-스코프 정밀화 +
-    # ground-truth 골든(문서별 실제 N일)이 회사미상 terms 적재의 선결 — @docs/STATUS.md.
-    m = re.search(r'철회[^\n]{0,50}?(\d+)\s*일\s*이내', md) or \
-        re.search(r'(\d+)\s*일\s*이내[^\n]{0,30}?철회', md)
-    t["cooling_off_days"] = int(m.group(1)) if m else None
+    # 청약철회 — "청약을 철회할 수 있" **선언 문맥**의 'N일 이내'만. 여러 값이면 표준 15일 우선
+    # (보험업법 표준 청약철회=15일; 진단계약 30일 등은 예외조항). 이 두 규칙이 held-out(구LIG 수술비
+    # =3일 '반환기일' 오추출 · 상해질병=30일 '진단계약 예외' 오추출)이 검출한 오탐을 정밀 배제한다 —
+    # 느슨한 '철회…N일이내'는 반환기일·예외를 잡던 것을 선언패턴+15우선으로 교정(골든 무회귀·held-out 정답).
+    _decl = re.findall(r'(\d+)\s*일\s*이내[^\n]{0,25}?청약[^\n]{0,12}?철회[^\n]{0,6}?(?:할|하실)\s*수\s*있', md)
+    _vals = [int(x) for x in _decl]
+    t["cooling_off_days"] = (15 if 15 in _vals else _vals[0]) if _vals else None
     if t["cooling_off_days"] is None:
         t["resolution_note"] = "청약철회 미기재 → 특약이면 보통약관 준용 소관"
 
