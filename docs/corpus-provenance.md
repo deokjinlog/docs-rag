@@ -90,6 +90,21 @@ https://www.kbinsure.co.kr/CG802030003.ec?fileNm={상품코드}_{공시버전}_1
 > 현실: 실제 대량 수집은 회사별 공시실 크랙 + 상품 특정이 붙는 **바운디드 데이터 작업**. 수집 능력·
 > provenance·스코프는 여기 못박음 → 반복 가능. KB는 즉시, 타사는 순차.
 
+## 스케일 시도 findings (2026-08 실측 — 정직)
+
+실제 수집 확장을 시도해 얻은 현실적 제약:
+1. **코드 다운로드는 안정, 열거는 불안정**: `fetch_kb_yakwan.py --code`는 반복 성공(22449 등). 그러나
+   상품명 **검색/목록 열거는 flaky**(같은 검색이 됐다 안 됐다) → 반복 자동화 뒤 **봇 탐지/rate-limit**
+   추정(결과표가 빈 채로 옴). 공시실의 표준 안티-자동화.
+2. **변형·버전 = 중복**: 22449(중도환급형) `==` 22452(만기환급형) **md5 동일**(약관은 환급형 무관).
+   22582는 같은 상품 다른 공시버전(near-dup). → 코드만 늘려선 데이터 안 늘고 **dedup(md5) 필수**,
+   진짜 스케일은 **distinct 상품**(다른 보종/상품라인)이 필요.
+3. **결론**: 의미있는 스케일업 = (a) **respectful rate-limited 스크래퍼**(대기·세션·백오프)를 focused
+   프로젝트로 만들거나, (b) **사람이 큐레이션 다운로드** 후 `data/input`에 넣고 파이프라인 ingest.
+   수집 능력·provenance·스코프·dedup 규율은 여기 못박음 → 인프라 건강할 때 focused 실행.
+
+> 로컬 스택 제약도 병존: postgres/모델 마운트가 WSL에서 자주 내려가 load·서빙이 간헐 중단([[wsl-restart-breaks-docker-stack]]). 대량 ingest는 스택 안정 확인 후.
+
 ## 참고 (검증 링크)
 - 손해보험협회 통합공시: https://kpub.knia.or.kr/main.do · 소비자포털 https://consumer.knia.or.kr/disclosure.do
 - 생명보험협회 비교공시: http://pub.insure.or.kr
