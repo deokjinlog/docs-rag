@@ -163,6 +163,37 @@ https://www.kbinsure.co.kr/CG802030003.ec?fileNm={상품코드}_{공시버전}_1
 > 가능·finding만 여기 보존). 골든 미부착(정밀도 골든은 5~6개사 유지). 축2 개선을 원하면 **ODL로
 > 재추출**(느림·GPU)해야 조/특약 일반화를 잴 수 있음 — 처리량은 이미 증명됐고, 구조 파싱은 ODL 통과가 전제.
 
+## 실 파이프라인 E2E 측정 (2026-08~09 · KB 12개 샘플 · ODL 경로)
+
+축2(고속 probe는 ODL 필요)를 실증한 뒤, **실제 서빙 파이프라인**(POST /documents →
+Celery extract→ocr→chunk→embed)으로 대표 KB 약관 12개(2,279p, 평균 190p)를 태워 진짜 처리량을
+쟀다(measure-first). data/input에 넣고 파이프라인이 자동 처리 → output/raw + Qdrant.
+
+### ✅ ODL extract = 작동 + 구조 파싱됨 (축2 확증)
+12개 전부 ODL이 md 산출, `parse_clauses` **조 31~64개** 파싱(고속 pymupdf 경로는 0이었음).
+`제N조【제목】`을 ODL ML 레이아웃 복원이 살려서 결정론 파서가 읽는다. **fast/ODL 트레이드오프를
+실 파이프라인으로 확증.** (초복합약관 3개는 조=8 — 특약 100+개 조-리셋 경계 때문, ODL 실패 아님.)
+
+### ✅ extract+OCR+chunk 처리량 (DB 상태로그 타임스탬프 실측)
+- 12개 / 2,279p = **123초** (celery 4워커 병렬) = **~18.5 p/초 (1,110 p/분)**
+- **→ 300개(47,680p) 추산 ≈ 43분.** 텍스트 PDF라 ODL이 빠름(초기 "며칠" 우려는 오판).
+
+### 🟡 embed = GPU에서 작동 확인 (완주는 인프라에서 막힘)
+- 정답 구성(**vLLM off + 임베더 GPU + 동시성 1**)에서 깨끗이 embed(2/12 완료, GPU 4.3GB·100%·OOM 0).
+- **8GB GPU 교훈**: 기본 `--concurrency=10`은 BGE-M3 10개 동시 로딩 → CUDA OOM. **동시성 1 필수.**
+  CPU 임베딩(concurrency 무관)은 5,541청크 처리에 RAM 폭발 → OOM킬러가 postgres/qdrant 사살.
+- embed는 12개에 청크 5,541개(≈462/문서) → 300개면 ~138K청크로 **GPU 동시성1 직렬이 진짜 병목**.
+
+### ⚠️ 진짜 한계 = 계산력이 아니라 로컬 스택 안정성
+측정 중 스택이 반복 사망: postgres OOM사 → qdrant OOM사 → 세션 간 컨테이너 소실 → docker 데몬 hang →
+**Docker Desktop 통째 리셋(이미지·볼륨 0)**. 8GB 노트북 단일 GPU + WSL2에선 대량 무인 ingest가
+**인프라에서 막힌다**(재빌드도 buildkit frozen). 완주하려면 안정적 Docker/네트워크 + 큰 GPU(동시성↑) 필요.
+정식 대량 ingest 구성 = `make ingest-gpu`(vLLM off·임베더 GPU) + **동시성 1로 낮춘 override**.
+
+> 호스트 데이터(원천 PDF·output/raw md·골든·코드)는 도커와 무관(바인드마운트)이라 리셋에도 **전부 무사**.
+> 재개: Docker Desktop 재시작 → `docker compose build` → up(vLLM off) → schema.sql → data/input 재투입 →
+> 동시성1 GPU embed. finding은 이 절에 보존돼 재구축 없이도 결론 유효.
+
 ## 참고 (검증 링크)
 - 손해보험협회 통합공시: https://kpub.knia.or.kr/main.do · 소비자포털 https://consumer.knia.or.kr/disclosure.do
 - 생명보험협회 비교공시: http://pub.insure.or.kr

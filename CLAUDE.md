@@ -180,10 +180,11 @@ RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로
 - 집계: `scripts/trace_summary.py` (12 섹션, `--feedback` 플래그로 Feedback DB JOIN 13번째 섹션 추가) / 검증: `scripts/smoke_test.py` (11 step)
 
 ## 세부 가이드
+> `@` 붙은 3종은 항상 로드(도메인·평가 토대). 나머지는 **필요할 때 읽는다** — 항상 로드하면 세션당 ~18k 토큰이 상주해서 뺐다.
 - @docs/domain-model.md : 보험 약관 도메인 토대 (표준약관 백본·주계약↔특약 준용·관-조-항-호 계층·별표·구현 매핑)
 - @docs/eval-and-golden.md : 평가·골든셋 방법론 (precision-first·실패분석 루프·필드별 채점·전처리 게이트·로드맵)
-- @docs/api.md          : REST API 설계 (엔드포인트, 스키마, 에러 코드, 멱등성)
-- @docs/architecture.md : 시스템 구성도, 데이터 흐름, 성능 수치, 장애 대응
-- @docs/pipeline.md     : RAG 서빙 (쿼리 라우팅, CRAG, 프롬프트, Self-RAG)
-- @docs/chunking.md     : 청킹 전략 (adaptive/fixed, OCR 파이프라인 3단계 필터, sibling 복원)
+- docs/api.md           : REST API 설계 (엔드포인트, 스키마, 에러 코드, 멱등성)
+- docs/architecture.md  : 시스템 구성도, 데이터 흐름, 성능 수치, 장애 대응
+- docs/pipeline.md      : RAG 서빙 (쿼리 라우팅, CRAG, 프롬프트, Self-RAG)
+- docs/chunking.md      : 청킹 전략 (adaptive/fixed, OCR 파이프라인 3단계 필터, sibling 복원)
 - @docs/data-staging.md : 데이터 스테이징 (raw→processed→DB, 재청킹 소스, stage.py resolver)
