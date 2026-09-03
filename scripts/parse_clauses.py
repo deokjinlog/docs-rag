@@ -21,6 +21,11 @@ RE_JO = re.compile(r'^[#\s\-•*]*제\s*(\d+)\s*조\s*【\s*([^】]+?)\s*】', r
 # 반각 제목은 중첩 괄호를 가짐(예: 치아우식증(충치) 및 치주질환(잇몸질환)…) → 1단계 중첩 허용
 RE_JO_HALF = re.compile(
     r'^[#\s\-•*]*제\s*(\d+)\s*조\s*\(\s*((?:[^()\n]|\([^()\n]*\))*?)\s*\)', re.MULTILINE)
+# 숫자 조 표기: "1. (보장종목)" — 제N조를 안 쓰고 번호+반각괄호로 조를 매기는 회사(DB손보·DB다이렉트).
+# domain-model §1 "구조가 아니라 포맷이 다르다"의 실사례 — 조 자체는 표준약관 순서 그대로다.
+# 호(1. …)와 형태가 겹치므로 **full·half가 둘 다 실패한 문서에서만** 쓴다(select_profile 게이트).
+RE_JO_NUM = re.compile(
+    r'^[#\s\-•*]*(\d{1,2})\.\s*\(\s*((?:[^()\n]|\([^()\n]*\))*?)\s*\)', re.MULTILINE)
 # 목차(ToC) 항목: 제목 뒤에 점선 리더(………11)가 붙는다 → 본문 조와 구분해 스킵
 RE_TOC_DOTS = re.compile(r'[.·․…]{3,}')
 # 부록 시작(별표/부칙): 마지막 조의 본문은 여기서 끝난다. 【별표N】(전각) 헤딩도 포함.
@@ -119,8 +124,30 @@ def subitem_counts(hangs: list[dict]) -> tuple[int, int, int]:
 
 
 def select_profile(md: str) -> str:
-    """전각【】가 여럿이면 full(라이나), 아니면 half(반각: New치아·다이렉트)."""
-    return "full" if len(RE_JO.findall(md)) >= 3 else "half"
+    """전각【】=full(라이나) · 반각()=half(New치아·다이렉트) · 번호만=numeric(DB손보).
+
+    numeric은 **앞의 둘이 모두 실패했을 때만** 고른다. "N. (제목)"은 호(號) 표기와 형태가
+    같아 단독으로는 오탐 위험이 크고, 기존 문서는 전부 full/half로 잡히므로 이 순서가
+    기존 프로파일 판정을 바꾸지 않는다(회귀 0).
+    """
+    if len(RE_JO.findall(md)) >= 3:
+        return "full"
+    n_half, n_num = len(RE_JO_HALF.findall(md)), len(RE_JO_NUM.findall(md))
+    # 숫자 표기 문서에도 '제N조(…)' 는 남는다 — 개인정보보호법 제15조 같은 **외부법령 인용**이다
+    # (RE_EXTERNAL 마스킹이 다 못 걷어낸다). 그래서 half 임계만 보면 DB다이렉트가 half로 오분류돼
+    # 조 0개가 됐다. 실측(전 문서 29개): 기존 문서는 NUM 0~4인데 DB다이렉트만 469(HALF 118)라,
+    # "NUM이 HALF의 2배 초과"면 numeric으로 본다 — 이 규칙이 뒤집는 문서는 DB다이렉트 하나뿐이다.
+    if n_num >= 3 and n_num > n_half * 2:
+        return "numeric"
+    if n_half >= 3:
+        return "half"
+    if n_num >= 3:
+        return "numeric"
+    return "half"
+
+
+def _jo_regex(profile: str):
+    return {"full": RE_JO, "half": RE_JO_HALF, "numeric": RE_JO_NUM}[profile]
 
 
 def _sections(md_masked: str) -> list:
@@ -165,7 +192,7 @@ def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list
     본문은 원본에서. 목차/부록/인용법령 전문은 프로파일별로 배제, 번호 단조증가로 본문 한정.
     region=(start,end) 주면 그 구간만 단일 약관으로 파싱(복합문서 서브약관용, split_sections)."""
     profile = select_profile(md)
-    regex = RE_JO if profile == "full" else RE_JO_HALF
+    regex = _jo_regex(profile)
 
     # 의료법 제N조 등 외부법령을 같은 길이 filler로 치환 → 위치 보존, 조 오탐 방지
     md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
@@ -177,7 +204,10 @@ def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list
         # 복합 문서(제1절 보통약관 + 제2절~ 특별약관)면 보통약관 구간만 파싱. 그러면 목차(제1절
         # 앞)와 특별약관(제2절 뒤)이 구간 밖이라 자동 배제 → ToC 필터 없이 라인시작+단조증가로 충분.
         sections = _sections(md_masked)
-        compound = len(sections) >= 2
+        # numeric(DB손보 계열)은 절 헤딩을 신뢰하지 않는다 — 본문 제1절은 '#' 없는 평문이라
+        # 안 잡히고, 목차에 렌더된 '###### 제2절/제3절'만 잡혀 본문 구간이 목차 안으로 잘렸다
+        # (실측: 구간 8143~8339, 조 0개). 이 프로파일은 부칙 경계 + 단조증가로 본문을 한정한다.
+        compound = len(sections) >= 2 and profile != "numeric"
         if compound:
             body_start, body_end = sections[0].end(), sections[1].start()
         else:
@@ -191,7 +221,7 @@ def parse_clauses(md: str, product_id: str, region: tuple | None = None) -> list
         line_end = md_masked.find("\n", m.end())
         rest = md_masked[m.end(): line_end if line_end != -1 else len(md_masked)]
         if not compound:                                # 단일 문서: 구간 내 목차가 섞여 필터 필요
-            if profile == "full" and RE_TOC_DOTS.search(rest):
+            if profile in ("full", "numeric") and RE_TOC_DOTS.search(rest):
                 continue                                # 전각: 목차 점선 항목 제외
             if profile == "half" and len(rest.strip()) < 10 and "#" not in m.group(0):
                 continue                                # 반각: 목차(괄호 뒤 본문 없음) 제외.
@@ -231,14 +261,14 @@ def detect_subcontracts(md: str) -> list[dict]:
     (특약 런은 '…특별약관' 헤딩이 앞서고, 부칙/인용법령 전문 리셋은 안 그렇다). 목차·인라인참조
     필터는 parse_clauses와 동일 규칙 재사용(#-헤딩 반각 조 포함)."""
     profile = select_profile(md)
-    regex = RE_JO if profile == "full" else RE_JO_HALF
+    regex = _jo_regex(profile)
     md_masked = RE_EXTERNAL.sub(lambda m: "␡" * len(m.group()), md)
 
     hits = []                                              # (jo, start) 본문 조만
     for m in regex.finditer(md_masked):
         line_end = md_masked.find("\n", m.end())
         rest = md_masked[m.end(): line_end if line_end != -1 else len(md_masked)]
-        if profile == "full" and RE_TOC_DOTS.search(rest):
+        if profile in ("full", "numeric") and RE_TOC_DOTS.search(rest):
             continue                                       # 전각 목차 점선
         if profile == "half" and len(rest.strip()) < 10 and "#" not in m.group(0):
             continue                                       # 반각 목차(#-헤딩 진짜 조는 통과)
