@@ -1,0 +1,17 @@
+# CPU-only ingest override — GPU 일절 미사용 (vLLM off 전제).
+#
+# 왜: 8GB 단일 GPU에서 임베더를 GPU로 올리면(구 ingest-gpu1.yml) 동시 encode가 CUDA OOM을 내고,
+# 반대로 기본 --concurrency=10 그대로 CPU 임베딩을 돌리면 WSL RAM이 터져 OOM킬러가
+# postgres/qdrant를 죽인다(2026-09-01 실측, 스택 5회 사망). 원인은 device가 아니라 동시성이다.
+# → 임베더는 프로젝트 기본값 CPU(CUDA_VISIBLE_DEVICES=-1) 그대로, 동시성만 10→4로 낮춘다.
+# qdrant는 GPU 인덱싱을 config에서 켜뒀으므로 env override로 끈다(이 규모<10만 벡터에선 이득 미미).
+# deploy.reservations는 compose 병합상 override로 못 지우지만, indexing=false면 GPU를 안 쓴다.
+#
+# 적용:  docker compose -f docker-compose.yml -f docker-compose.cpu-ingest.yml up -d
+# 복귀:  override 없이 docker compose up -d
+services:
+  celery:
+    command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=4 -E
+  qdrant:
+    environment:
+      QDRANT__STORAGE__GPU__INDEXING: "false"

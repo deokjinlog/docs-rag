@@ -2,6 +2,7 @@
 BGE-M3로 벡터 생성 → Qdrant에 Dense + BM25 하이브리드 저장 → tb_document_contents 적재.
 상태: 31 → 42 → 11 (실패 시 95).
 """
+import threading
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -29,20 +30,30 @@ from ..repository import DocumentRepository, ChunkRepository, ContentsRepository
 from ..logger import celery_logger as logger
 
 _qdrant = None
+_qdrant_lock = threading.Lock()
 
 
 def _get_qdrant() -> QdrantClient:
-    """Qdrant 클라이언트 싱글턴. 첫 호출 시 컬렉션 존재 여부도 확인."""
+    """Qdrant 클라이언트 싱글턴 (double-checked locking). 첫 호출 시 컬렉션 존재 여부도 확인.
+
+    Why 락: `_ensure_collection`이 check-then-create라, `--pool=threads`의 여러 스레드가
+    락 없이 진입하면 둘 다 `collection_exists()==False`를 통과해 중복 create_collection으로
+    한쪽이 실패한다. embedding.py `get_embedding_model()`·paddle `_get_engine()`과 같은 패턴.
+    """
     global _qdrant
-    if _qdrant is None:
-        # gRPC(protobuf) 사용 시 REST(JSON) 대비 직렬화 크기 2~3배 작음 → 같은 32MB에 더 많이 적재.
-        _qdrant = QdrantClient(
-            host=QDRANT_CONFIG["host"],
-            port=QDRANT_CONFIG["port"],
-            grpc_port=QDRANT_CONFIG.get("grpc_port", 6334),
-            prefer_grpc=True,
-        )
-        _ensure_collection(_qdrant)
+    if _qdrant is not None:     # fast path
+        return _qdrant
+    with _qdrant_lock:
+        if _qdrant is None:     # 락 획득 시점 재확인
+            # gRPC(protobuf) 사용 시 REST(JSON) 대비 직렬화 크기 2~3배 작음 → 같은 32MB에 더 많이 적재.
+            client = QdrantClient(
+                host=QDRANT_CONFIG["host"],
+                port=QDRANT_CONFIG["port"],
+                grpc_port=QDRANT_CONFIG.get("grpc_port", 6334),
+                prefer_grpc=True,
+            )
+            _ensure_collection(client)
+            _qdrant = client    # 컬렉션 준비까지 끝난 뒤에 공개 — 반쯤 준비된 객체 노출 방지
     return _qdrant
 
 
