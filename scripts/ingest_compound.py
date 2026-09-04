@@ -42,12 +42,17 @@ def sections_for_ingest(md):
     없는 복합약관(KB·회사미상: `## 특별약관`·제N장 계열)만 조-리셋 불변식으로 서브계약을 커버한다.
     진짜 특약(헤딩이 '특별약관'으로 끝남)만 자식으로 승격 — 헤딩이 준용규정 본문("…이 특별약관에서
     정하지…")이거나 없는 리셋(인용법령 전문·부칙)은 precision-first로 스킵(억지 특약 product 0)."""
-    secs = pc.split_sections(md)
+    # numeric(DB손보 계열)은 절 헤딩을 신뢰하지 않는다 — 본문 '제1절 보통약관'은 '#' 없는
+    # 평문이라 RE_SECTION에 안 잡히고, 목차에 렌더된 '###### 제2절/제3절'만 잡혀 보통약관
+    # 구간이 목차 안으로 잘린다. 그러면 부모 섹션이 조 0개가 돼 스킵되고, 특약만 적재돼
+    # **부모 없는 고아 특약**이 남는다(실측: DB_PROMY_2101 고아 10건·본문 48조 유실).
+    # parse_clauses가 같은 이유로 numeric에서 절 분할을 끄는 것과 같은 규율.
+    secs = [] if pc.select_profile(md) == "numeric" else pc.split_sections(md)
     if len(secs) >= 2:
         return secs                                        # 제N절 복합약관: 기존 split 경로
     runs = pc.detect_subcontracts(md)
     if len(runs) < 2:
-        return secs                                        # 단일 약관: split_sections 그대로(1섹션)
+        return secs or pc.split_sections(md)                # 단일 약관: split_sections 그대로(1섹션)
     out = []
     for i, r in enumerate(runs):
         end = runs[i + 1]["start"] if i + 1 < len(runs) else len(md)
