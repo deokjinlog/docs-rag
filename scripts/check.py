@@ -22,6 +22,7 @@ CHECKS = [
     ("exclusion",    ["extract_exclusion_reasons.py"]),
     ("catalog",      ["extract_coverages.py"]),
     ("waiting",      ["extract_waiting.py"]),        # KB 면책기간·감액(담보별)
+    ("silson",       ["extract_silson.py", "--score"]),  # 실손 자기부담·공제(세대 게이트)
     ("completeness", ["assemble_answer.py"]),
     ("reconcile",    ["assemble_answer.py", "--reconcile"]),
     ("gate",         ["gate.py"]),                 # FAIL 있으면 ❌(WARN ⚠는 통과)
