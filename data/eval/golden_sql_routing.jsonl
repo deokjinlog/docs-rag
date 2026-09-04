@@ -24,3 +24,8 @@
 {"query": "골든라이프에 레진충전 담보 있어?", "route": "rag", "kind": "catalog-miss", "note": "catalog 미적중→부재 단정 안 하고 RAG(precision)"}
 {"query": "골든라이프 암진단비 C73 보장돼?", "route": "sql", "kind": "coverage", "note": "KB 담보특정성(C73 미보장→갑상선암)·브랜드 스코프"}
 {"query": "골든라이프 암진단비 C50 보장돼?", "route": "sql", "kind": "coverage", "note": "KB 일반암 보장"}
+{"query":"골든라이프 중환자실 입원하면 하루 얼마?","route":"rag","kind":"negative","note":"교차회사 오염 — KB 골든라이프엔 중환자실 담보 0개. 담보명만 겹치는 라이나 지급률(1일당 1%)을 답하던 실측 버그. 브랜드 스코프로 차단"}
+{"query":"골든라이프에 반려동물진단비 담보 있어?","route":"rag","kind":"negative","note":"코퍼스에 없는 담보 — 부재를 단정하지 않고 RAG로(동의어·다른 표기 가능)"}
+{"query":"우주여행 상해로 입원하면 하루 얼마 받아요?","route":"rag","kind":"negative","note":"존재하지 않는 담보 — amount 게이트는 켜지나 select_payout miss로 RAG"}
+{"query":"메리츠화재 실손보험 청약철회 언제까지?","route":"rag","kind":"negative","note":"코퍼스에 없는 회사 — 브랜드 미해소로 상품 특정 불가"}
+{"query":"슬기로운 질병중환자실입원일당 얼마?","route":"rag","kind":"negative","note":"KB 슬기로운에 해당 담보가 있으나 지급률(rate_pct)이 없다(가입금액 기저) — 억지 값 대신 RAG"}

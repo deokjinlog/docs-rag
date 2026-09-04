@@ -356,13 +356,20 @@ class PayoutRepository:
         self.db = db
 
     def get_rules(self, product_id: str | None = None) -> list[dict]:
-        """payout_rule 전체(또는 상품 필터) → dict 리스트. rate_pct(Decimal)는 int로 정규화."""
+        """payout_rule 전체(또는 상품 스코프) → dict 리스트. rate_pct(Decimal)는 int로 정규화.
+
+        product_id 는 **base 상품**을 받아 그 특약(`<base>_TNN`)까지 함께 스코프한다 —
+        payout_rule 은 베이스 행(LINA_ICU_2024)과 특약 행(KB_SEULGI_2023_T20)이 섞여 있어
+        정확일치만 하면 특약 지급규칙을 통째로 놓친다. coverage_range 는 베이스 행만이라
+        정확일치로 충분했지만 여기는 아니다.
+        """
         from sqlalchemy import text
         sql = f"SELECT {', '.join(self._COLS)} FROM payout_rule"
         params: dict = {}
         if product_id:
-            sql += " WHERE product_id = :pid"
+            sql += " WHERE (product_id = :pid OR product_id LIKE :pidpfx)"
             params["pid"] = product_id
+            params["pidpfx"] = f"{product_id}\\_%"   # 특약 행까지 (LIKE 메타문자 _ 는 이스케이프)
         out = []
         for row in self.db.execute(text(sql), params).mappings():
             d = dict(row)

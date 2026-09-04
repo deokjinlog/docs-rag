@@ -298,7 +298,13 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # (담보만 겹치는 해석 질의는 게이트가, 담보/규칙 미매칭은 hit=None이 막는 2중 안전).
             if SQL_ROUTE_ENABLED and is_payout_amount_query(body.query):
                 _repo = PayoutRepository(db)
-                _rule = select_payout(_repo.get_rules(), body.query)
+                # 브랜드가 있으면 그 base로 스코프 — 교차회사 오염 차단. coverage 분기가 같은
+                # 이유로 이미 하던 것을 payout 에도 맞춘다. 실측 버그: "골든라이프 중환자실
+                # 하루 얼마?" 가 담보명만 겹치는 **라이나** 지급률(1일당 1%)을 답했다. KB
+                # 골든라이프엔 중환자실 담보가 0개다 — 소비자가 자기 상품이 아닌 값을 받는다.
+                # 브랜드가 없으면 None → 전체(기존 동작 유지).
+                _ppid = resolve_base_product_id(body.query)
+                _rule = select_payout(_repo.get_rules(_ppid), body.query)
                 if _rule is not None:
                     # 면책 강제첨부 — "얼마?" 답에 지급 제외(면책)를 항상 붙인다(완결성).
                     _excl = _repo.get_exclusions(_rule["product_id"], _rule.get("coverage"))
@@ -670,7 +676,10 @@ def payout(body: PayoutRequest, db: Session = Depends(get_db)):
     """
     _apply_input_guard(body)
     repo = PayoutRepository(db)
-    rule = select_payout(repo.get_rules(body.product_id), body.query)
+    # 명시 product_id 우선, 없으면 질의의 브랜드로 스코프 — /answer 분기와 같은 교차회사
+    # 오염 방어. 미지정이면 전 상품이라는 기존 계약은 브랜드도 없을 때만 유지된다.
+    _pid = body.product_id or resolve_base_product_id(body.query)
+    rule = select_payout(repo.get_rules(_pid), body.query)
     # 면책 강제첨부 — 지급률만 답하고 면책 빠뜨리면 소비자 손해(완결성).
     exclusions = repo.get_exclusions(rule["product_id"], rule.get("coverage")) if rule else []
     return {

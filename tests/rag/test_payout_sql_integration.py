@@ -58,6 +58,46 @@ def test_payout_repository_rate_pct_is_int():
             assert isinstance(r["rate_pct"], int), f"rate_pct 타입 {type(r['rate_pct'])}"
 
 
+@pytest.mark.integration
+def test_get_rules_scope_blocks_cross_company():
+    """base 스코프가 **교차회사 오염**을 막고, 그 특약 행은 포함해야 한다.
+
+    실측 버그(2026-09-04): "골든라이프 중환자실 하루 얼마?" 가 담보명만 겹치는 라이나
+    지급률(1일당 1%)을 답했다 — KB 골든라이프엔 중환자실 담보가 0개다. payout 분기만
+    브랜드 스코프를 안 걸고 있었다(coverage·terms·catalog·waiting 은 이미 걸고 있었음).
+    payout_rule 은 베이스 행과 특약 행(`<base>_TNN`)이 섞여 있어 정확일치로는 특약을
+    통째로 놓치므로, 스코프는 base + 그 특약을 함께 잡아야 한다.
+    """
+    from v1.config import task_session
+    from v1.repository import PayoutRepository
+
+    with task_session() as db:
+        repo = PayoutRepository(db)
+        kb = repo.get_rules("KB_GOLDENLIFE_2026")
+        allrows = repo.get_rules()
+
+    if not allrows:
+        pytest.skip("payout_rule 미적재")
+
+    # ① 스코프 밖 상품의 행이 새어 들어오면 안 된다
+    for r in kb:
+        assert r["product_id"].startswith("KB_GOLDENLIFE_2026"), \
+            f"스코프 밖 행 유출: {r['product_id']}"
+
+    # ② 라이나 중환자실은 KB 스코프에 없어야 한다(오염의 실체)
+    assert not [r for r in kb if "중환자실" in (r.get("coverage") or "")], \
+        "KB 스코프에 라이나 중환자실 지급규칙이 섞였다"
+
+    # ③ 특약 행 포함 — 정확일치였다면 `_TNN` 행이 전부 빠진다
+    sc = [r for r in allrows if r["product_id"].startswith("KB_SEULGI_2023_")]
+    if sc:
+        scoped = repo_scoped = None
+        with task_session() as db:
+            scoped = PayoutRepository(db).get_rules("KB_SEULGI_2023")
+        assert any(r["product_id"].startswith("KB_SEULGI_2023_") for r in scoped), \
+            "base 스코프가 특약 행을 놓쳤다(정확일치 회귀)"
+
+
 # ── POST /payout 엔드포인트 (SQL 경로 사이드카) ─────────────────────────────
 @pytest.mark.integration
 def test_payout_endpoint_deterministic_hit():
