@@ -11,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .config import get_db
-from .config.settings import CRAG_MAX_RETRIES
+from .config.settings import CRAG_ABORT_THRESHOLD, CRAG_MAX_RETRIES
 from .guards import mask_pii, mask_pii_list, sanitize_input, sanitize_output
 from .logger import api_logger
 from .rag import (
@@ -492,9 +492,23 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             })
             rec.crag["score_before"] = initial_score
 
+            # 재작성해도 소용없는 구간은 CRAG 자체를 건너뛴다.
+            #
+            # CRAG 재작성이 고치는 건 어휘갭이다("다시 살리다"→"부활(효력회복)"). 코퍼스에
+            # 주제가 아예 없으면 어떻게 바꿔 물어도 못 찾는다 — 그런데도 LLM 재작성 2회를
+            # 쓰고, 끝엔 저신뢰 컨텍스트로 답을 만들어 조용한 실패가 된다(실측: "피자 배달
+            # 지연 보상?" top1=0.0014 가 재작성 경로로 들어갔다).
+            # 임계 근거는 settings.CRAG_ABORT_THRESHOLD 주석(실측 분포).
+            _abort = (not ranked) or initial_score < CRAG_ABORT_THRESHOLD
+            if _abort:
+                api_logger.info(
+                    "CRAG 조기중단 — top1=%s",
+                    f"{initial_score:.4f}" if ranked else "결과 0건",
+                )
+
             # 재시도 시 rewrite로 query_type이 바뀌어도 원래 라우팅 전략 유지.
             original_route = route
-            while not evaluate_retrieval(ranked) and retry_count < CRAG_MAX_RETRIES:
+            while (not _abort) and not evaluate_retrieval(ranked) and retry_count < CRAG_MAX_RETRIES:
                 retry_count += 1
                 api_logger.info(f"CRAG 재검색 {retry_count}/{CRAG_MAX_RETRIES}")
                 current_query = rewrite_query(current_query)
@@ -515,13 +529,35 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             rec.crag["retries"] = retry_count
             rec.crag["score_after"] = float(ranked[0][1]) if ranked else None
 
-            if not ranked:
+            # 생성 전 하드 게이트 — 결과 0건 **또는** CRAG 재시도를 소진하고도 점수가 임계
+            # 아래면 답하지 않는다.
+            #
+            # 이전엔 `if not ranked:` 뿐이라 사실상 게이트가 없었다. search_and_rerank 는
+            # 점수가 낮아도 top_k 를 채워 반환하므로 ranked 가 비는 일이 거의 없고, 그래서
+            # 도메인 밖 질의가 CRAG 2회를 거쳐 그대로 LLM 까지 갔다(실측: "피자 배달 지연
+            # 보상 규정?" top1=0.0014 → 생성 시도). LLM 은 컨텍스트가 엉망이어도 유창하게
+            # 답하므로 에러도 로그도 안 남는 **조용한 실패**가 된다. pipeline.md 는 "그래도
+            # 부족 → 찾지 못했습니다 반환"이라 적혀 있었는데 코드가 그렇지 않았다 — 문서가
+            # 약속한 게이트를 코드에 맞춘다.
+            #
+            # 임계는 실측 분포에서 나왔다(측정-먼저): 부정 질의 4건 0.0014~0.2182 vs 긍정
+            # 골든 p10=0.83. 사이 0.22~0.83 이 비어 있어 CRAG_SCORE_THRESHOLD(0.3)가 두
+            # 분포를 가른다. 재작성 후에도 못 넘으면 "코퍼스에 없다"로 보는 게 맞다.
+            _low_conf = bool(ranked) and not evaluate_retrieval(ranked)
+            if not ranked or _low_conf:
                 elapsed_ms = round((time.time() - t0) * 1000)
+                _scores = [float(r[1]) for r in ranked]
                 rec.retrieval = {
-                    "result_count": 0, "chunk_ids": [],
-                    "rerank_scores": [], "rerank_stats": None,
+                    "result_count": len(ranked),
+                    "chunk_ids": [str(r[0].id) for r in ranked],
+                    "rerank_scores": _scores,
+                    "rerank_stats": ({"min": round(min(_scores), 4),
+                                      "max": round(max(_scores), 4),
+                                      "mean": round(sum(_scores) / len(_scores), 4)}
+                                     if _scores else None),
                 }
-                rec.answer = {"length_chars": 0, "is_refusal": True}
+                rec.answer = {"length_chars": 0, "is_refusal": True,
+                              "refusal_reason": "low_confidence" if _low_conf else "no_results"}
                 rec.timing_ms["total"] = elapsed_ms
                 background_tasks.add_task(write_trace, rec)
                 # route는 검색 전에 이미 일어난 일이므로 0건 케이스에도 항상 노출 (api.md 계약).

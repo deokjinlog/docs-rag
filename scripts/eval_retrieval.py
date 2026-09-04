@@ -127,10 +127,27 @@ def main():
     agg = {k: 0 for k in KS}
     mrr = 0.0
     misses = []
+    neg_total = neg_pass = 0
+    neg_fail: list = []
     per_query = []          # 세그먼트 집계용 (segment, hit@k, rank)
     try:
         for r in rows:
             src = _retrieve(r["query"], r.get("service_code", "01"), r.get("document_id"))
+            # 부정 케이스(anchor 없이 max_top1만) — "정답이 없어야 하는 질의"의 검색 점수 상한.
+            # 긍정 골든이 못 잡는 유형: 도메인 밖인데 리랭커가 높은 점수를 주면 조용한 실패의
+            # 온상이 된다(정답 문서가 색인에 없을 때 무관한 청크에 0.99가 붙는 실측 사례).
+            # 실측 분포로 임계를 정했다 — 부정 4건 0.0014~0.2182 vs 긍정 p10=0.83. 사이가 비어
+            # 있어 0.30(=CRAG_SCORE_THRESHOLD)이 두 분포를 가른다.
+            if r.get("anchor") is None and r.get("max_top1") is not None:
+                top1 = float(src[0].get("rerank_score") or 0.0) if src else 0.0
+                ok = top1 <= float(r["max_top1"])
+                neg_total += 1
+                neg_pass += 1 if ok else 0
+                if not ok:
+                    neg_fail.append((r["query"], top1, r["max_top1"]))
+                print(f"{r['query'][:38]:<40}{'(부정)':<22}{'—':<5}"
+                      f"{top1:<8.4f}{'✅' if ok else '❌'} ≤{r['max_top1']}")
+                continue
             rank, rscore = _rank_of_anchor(src, r["anchor"])
             hit = {k: (1 if rank and rank <= k else 0) for k in KS}
             for k in KS:
@@ -149,12 +166,16 @@ def main():
         print("   docker compose up -d 후 색인이 있어야 검색 채점 가능(로드맵 A4).")
         sys.exit(2)
 
-    n = len(rows)
+    n = len(rows) - neg_total          # 부정은 recall 분모에서 제외(다른 축)
     recall = {k: agg[k] / n for k in KS}
     mrr /= n
     print("-" * 92)
     line = "  ".join(f"recall@{k}={recall[k]:.3f}" for k in KS) + f"  |  MRR={mrr:.3f}"
     print(f"  {line}   (n={n})")
+    if neg_total:
+        print(f"  부정(도메인 밖) {neg_pass}/{neg_total} 통과"
+              + ("" if not neg_fail else
+                 "  ❌ " + " / ".join(f"{q[:20]} top1={t:.3f}>{m}" for q, t, m in neg_fail)))
     if misses:
         print(f"  top-{TOP_K} 밖 미검출 {len(misses)}건: " + " / ".join(m[:24] for m in misses))
 

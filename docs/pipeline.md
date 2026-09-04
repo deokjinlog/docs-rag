@@ -21,8 +21,8 @@ POST /answer    →  [1] 쿼리 라우팅 → [2] CRAG 루프 → [3] 프롬프�
 | BM25 검색 | Qdrant sparse | ❌ |
 | RRF 융합 | Qdrant 내부 | ❌ |
 | CrossEncoder 리랭킹 | BGE-reranker-v2-m3 | 리랭커 GPU |
-| [2] CRAG 점수 평가 | 숫자 비교 (`score >= 0.3`) | ❌ |
-| [2] CRAG 쿼리 재작성 (필요 시) | vLLM (Qwen3) | ✓ ~2s |
+| [2] CRAG 점수 평가 | 숫자 비교 (`>= 0.3` 통과 / `< 0.1` 즉시 거절) | ❌ |
+| [2] CRAG 쿼리 재작성 (0.1~0.3 구간만) | vLLM (Qwen3) | ✓ ~2s |
 | [3] 프롬프트 템플릿 선택 | dict lookup (`PROMPTS[query_type]`) | ❌ |
 | [3] 답변 생성 | vLLM (Qwen3) | ✓ ~3s |
 | [4] Self-RAG 검증 (조항·숫자 구조) | 정규식 + 집합 비교 | ❌ |
@@ -89,35 +89,66 @@ Prefetch(query=bm25_text,  using="content-bm25", limit=top_k * bm25_factor)
 
 ## [2] CRAG 루프 (검색 품질 평가 → 재검색)
 
-CrossEncoder 리랭킹 후 **상위 문서의 rerank score**로 검색 품질을 판단한다. **판단 자체는 숫자 비교(`score >= 0.3`), LLM 호출 없음**. 판단 결과 "부족"일 때만 쿼리 재작성을 위해 LLM 1회 호출.
+CrossEncoder 리랭킹 후 **상위 문서의 rerank score**로 검색 품질을 판단한다. **판단 자체는 숫자 비교, LLM 호출 없음**. 판단 결과 "부족"일 때만 쿼리 재작성을 위해 LLM을 부른다.
+
+점수를 **하나가 아니라 두 개**의 경계로 나누는 게 핵심이다. CRAG 재작성이 실제로 고치는 건 **어휘갭**이지(구어체 "다시 살리다" → 약관 용어 "부활(효력회복)", [평가 §9](eval-and-golden.md) 실측 7위→2위) **주제 부재**가 아니다. 코퍼스에 없는 주제는 어떻게 재작성해도 못 찾으므로, 그 구간에서 재작성을 돌리면 LLM 2회를 확실히 헛되이 쓰고 끝에는 어차피 저신뢰 컨텍스트로 답을 지어낸다 — **조용한 실패**.
 
 ```
-검색 → 리랭킹 → score >= 0.3? ─Yes→ 다음 단계
-                    │
-                    No
-                    │
-               LLM 쿼리 재작성 → 라우팅 다시 수행 → 재검색 (최대 2회)
-                    │
-               그래도 부족 → "관련 내용을 찾지 못했습니다" 반환
+검색 → 리랭킹 → top-1 점수
+        │
+        ├─ >= 0.3   ─────────────────────────→ 다음 단계 (통과)
+        │
+        ├─ 0.1 ~ 0.3  어휘갭 후보
+        │      └→ LLM 쿼리 재작성 → 라우팅 재수행 → 재검색 (최대 2회)
+        │             └→ 그래도 < 0.3 → 거절
+        │
+        └─ < 0.1    주제 부재 → **재작성 건너뛰고 즉시 거절** (LLM 0회)
+
+거절 = "관련 내용을 찾지 못했습니다." + trace `answer.is_refusal=true` · `refusal_reason`
 ```
 
-- **판단 기준**: `CRAG_SCORE_THRESHOLD = 0.3`
+- **통과 기준**: `CRAG_SCORE_THRESHOLD = 0.3`
+- **조기중단 하한**: `CRAG_ABORT_THRESHOLD = 0.1` — 이 아래면 재작성 없이 거절
 - **재작성**: vLLM에 "검색에 더 적합한 형태로 재작성하라" 프롬프트
 - **재작성 쿼리도 라우팅 재수행**: 원래 쿼리는 STRUCTURED_LOOKUP이었는데 재작성 후 INTERPRETATION이 될 수 있음
 - **최대 재시도**: `CRAG_MAX_RETRIES = 2`
+
+**0.1이라는 값의 근거 (실측 분포, 2026-09-04)**:
+
+| 질의 | top-1 | 성격 |
+|---|---|---|
+| 피자 배달 지연 보상 | 0.0007 | 주제 부재 |
+| 반려동물진단비 담보 | 0.0041 | 주제 부재 |
+| 자동차 정비 보증 | 0.1045 | 경계 (보험 어휘 일부) |
+| 우주여행 상해 | 0.2182 | 보험 어휘는 씀 |
+| 긍정 골든 (n=25) | p10 **0.83** · p50 0.96 | 정상 |
+
+부정과 긍정 사이가 0.22 ↔ 0.83으로 넓게 벌어져 있어 경계를 놓을 자리가 넉넉하다. 0.1은 "주제 부재"와 "어휘는 겹침"을 가르는 자리. **코퍼스·임베딩 모델이 바뀌면 분포가 이동하므로 재보정 대상**.
+
+**실측 검증 (vLLM 없이도 확인됨 — 거절이 LLM 앞에 있으므로)**:
+
+| 질의 | top-1 | 동작 | LLM 호출 |
+|---|---|---|---|
+| 피자 배달 지연 보상 | 0.0007 | 즉시 거절 (HTTP 200) | 0회 |
+| 반려동물진단비 담보 | 0.0041 | 즉시 거절 (HTTP 200) | 0회 |
+| 자동차 정비 보증 | 0.1045 | 재작성 시도 (설계대로) | 재작성 호출 |
+| 중환자실의 정의 | ≥ 0.3 | 게이트 통과 | 답변 생성 |
 
 ### 구현 위치
 
 | 책임 | 파일 : 함수/상수 |
 |---|---|
 | 점수 게이트 판정 (숫자 비교) | [src/v1/rag/grader.py](../src/v1/rag/grader.py): `evaluate_retrieval()` |
+| 조기중단 판정 | [src/v1/router.py](../src/v1/router.py): `answer()` 내부 `_abort` (CRAG 루프 **앞**) |
 | LLM 쿼리 재작성 | [src/v1/rag/search.py](../src/v1/rag/search.py): `rewrite_query()` + [src/v1/rag/prompts.py](../src/v1/rag/prompts.py): `REWRITE_PROMPT` |
-| 재시도 루프 orchestration | [src/v1/router.py](../src/v1/router.py): `answer()` 내부 `while not evaluate_retrieval(...)` 블록 |
-| threshold / 최대 재시도 상수 | [src/v1/config/settings.py](../src/v1/config/settings.py): `CRAG_SCORE_THRESHOLD`, `CRAG_MAX_RETRIES` |
+| 재시도 루프 orchestration | [src/v1/router.py](../src/v1/router.py): `answer()` 내부 `while (not _abort) and not evaluate_retrieval(...)` 블록 |
+| threshold 상수 | [src/v1/config/settings.py](../src/v1/config/settings.py): `CRAG_SCORE_THRESHOLD`, `CRAG_ABORT_THRESHOLD`, `CRAG_MAX_RETRIES` |
+| 거절률 집계 | [scripts/trace_summary.py](../scripts/trace_summary.py): `_aggregate_answerability` (거절% · `refusal_reason` 분포) |
 
 **알려진 한계**:
 - 최악 케이스에서 LLM 호출 3~4회(재작성 2 + 답변 1 + Critic 조건부), latency 8초+
 - CRAG on/off A/B 비교 데이터 미확보. 관측 지표: `crag_retry_rate`, `crag_on_off_ab_test`
+- 0.1~0.3 구간은 여전히 재작성 2회를 쓴다 — 이 구간의 재작성 성공률은 아직 미측정(vLLM 필요)
 
 ## [3] 프롬프트 분기
 
@@ -261,6 +292,7 @@ Self-RAG (Asai et al., ICLR 2024) · FActScore (Min et al., EMNLP 2023) · AIS (
 | 파라미터 | 위치 | 현재값 | 조절 방향 |
 |---------|------|--------|----------|
 | CRAG threshold | config/settings.py | 0.3 | 올리면 재검색 빈번, 내리면 저품질 허용 |
+| CRAG abort threshold | config/settings.py | 0.1 | 이 아래는 재작성 건너뛰고 즉시 거절. 올리면 거절↑·헛LLM↓, 내리면 그 반대 |
 | CRAG max retries | config/settings.py | 2 | 올리면 latency↑ 품질↑. 1회당 +2~3초 (vLLM 재작성 + 재검색 + 리랭킹) |
 | SIBLING_WINDOW | config/settings.py | 2 | hit 기준 ±N개 sibling 복원 |
 | SEARCH_PREFETCH_MULTIPLIER | config/settings.py | 3 | RRF prefetch top_k의 N배 |
