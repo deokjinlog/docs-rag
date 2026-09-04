@@ -311,6 +311,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _answer = format_payout_complete(_rule, _excl)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로 적중: {_rule.get('coverage')} → {_rule.get('rate_pct')}%")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_answer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)   # SQL 경로도 관측(route.strategy=sql)
                     return {
                         "trace_id": rec.trace_id,
@@ -342,6 +345,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _tanswer = format_terms(_product)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(terms) 적중: {_product.get('product_id')}")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_tanswer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
@@ -368,6 +374,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _canswer = _coverage_answer_reconciled(db, _cvpid, _code, _verdict)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(coverage) 적중: {_code} → {_verdict['verdict']}")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_canswer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
@@ -390,6 +399,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _caanswer = format_catalog(_covered)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(catalog) 적중: {_cpid} → {_covered}")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_caanswer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
@@ -412,6 +424,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _wanswer = format_waiting(_wrow)
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(waiting) 적중: {_wpid} → {_wrow.get('_coverage')}")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_wanswer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,
@@ -433,6 +448,9 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                     _eanswer = format_exclusions(_excls, _ep.get("resolution_note"))
                     rec.route = {**(rec.route or {}), "strategy": "sql"}
                     api_logger.info(f"SQL 경로(exclusion) 적중: {_ep['product_id']}")
+                    # SQL 경로도 answer 를 기록 — 안 채우면 trace에서 '결정론 답'과
+                    # '답 못 냄'이 구분되지 않아 거절률 집계가 불가능하다(실측: 262건 중 159건 누락).
+                    rec.answer = {"length_chars": len(_eanswer), "is_refusal": False}
                     background_tasks.add_task(write_trace, rec)
                     return {
                         "trace_id": rec.trace_id,

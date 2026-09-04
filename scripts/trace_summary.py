@@ -147,6 +147,29 @@ def _aggregate_route(records: Records) -> dict[str, Any]:
     }
 
 
+def _aggregate_answerability(records: Records) -> dict[str, Any]:
+    """답을 냈나 못 냈나 — 거절률 + SQL 결정론 적중률.
+
+    두 가지를 구분해서 센다(같은 '답 못 냄'이 아니다):
+      · refusal        "관련 내용을 찾지 못했습니다" — 검색이 근거를 못 찾음(품질 신호)
+      · sql_hit_rate   /answer 중 결정론 SQL로 답한 비율 — 낮아지면 라우팅/데이터 회귀 신호
+    SQL 미적중은 그 자체로는 정상이다(precision-first로 RAG에 넘김). 그래서 '거절'로 세지
+    않고 적중률로만 본다. 추세가 지표 — 절대값보다 어제 대비 변화가 의미 있다.
+    """
+    ans = [r for r in records if r.get("endpoint") == "answer"]
+    with_ans = [r for r in ans if r.get("answer") is not None]
+    refusals = [r for r in with_ans if (r.get("answer") or {}).get("is_refusal")]
+    sql = [r for r in ans if (r.get("route") or {}).get("strategy") == "sql"]
+    return {
+        "answer_total": len(ans),
+        "answer_traced": len(with_ans),          # answer 필드가 있는 것(집계 가능 모수)
+        "refusal_count": len(refusals),
+        "refusal_pct": round(len(refusals) / len(with_ans) * 100, 1) if with_ans else None,
+        "sql_hit_count": len(sql),
+        "sql_hit_pct": round(len(sql) / len(ans) * 100, 1) if ans else None,
+    }
+
+
 def _aggregate_decomposition(records: Records) -> dict[str, Any]:
     comp = [r for r in records if (r.get("route") or {}).get("query_type") == "comparison"]
     methods = Counter((r.get("decomposition") or {}).get("method", "none") for r in comp)
@@ -389,6 +412,7 @@ def _aggregate_output_guard(records: Records) -> dict[str, Any]:
 AGGREGATORS = (
     _aggregate_volume,
     _aggregate_route,
+    _aggregate_answerability,
     _aggregate_decomposition,
     _aggregate_rerank,
     _aggregate_crag,
@@ -440,6 +464,25 @@ def _render_route(summary: dict[str, Any]) -> None:
     strat, qt = summary["strategies"], summary["query_types"]
     print("  strategy:   " + " | ".join(_pct(strat, k, n) for k in strat))
     print("  query_type: " + " | ".join(_pct(qt, k, n) for k in qt))
+    print()
+
+
+def _render_answerability(summary: dict[str, Any]) -> None:
+    print("─── Answerability (거절률 · SQL 적중률) ──────────────────────")
+    tot, traced = summary["answer_total"], summary["answer_traced"]
+    if tot == 0:
+        print("  /answer trace 없음")
+        print()
+        return
+    miss = tot - traced
+    rp, sp = summary["refusal_pct"], summary["sql_hit_pct"]
+    print(f"  /answer {tot}건 (answer 필드 있음 {traced}"
+          + (f", 누락 {miss} — 구버전 trace" if miss else "") + ")")
+    print(f"  거절(근거 못 찾음): {summary['refusal_count']}건"
+          + (f" = {rp}%" if rp is not None else ""))
+    print(f"  SQL 결정론 적중:    {summary['sql_hit_count']}건"
+          + (f" = {sp}%" if sp is not None else "")
+          + "   ← 낮아지면 라우팅·데이터 회귀 신호")
     print()
 
 
@@ -610,6 +653,7 @@ def _render_output_guard(summary: dict[str, Any]) -> None:
 
 RENDERERS = (
     _render_route,
+    _render_answerability,
     _render_decomposition,
     _render_rerank,
     _render_crag,
