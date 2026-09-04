@@ -63,6 +63,13 @@ CRAG_ABORT_THRESHOLD = 0.1
 # CRAG 재검색 최대 횟수. 1회당 +2~3초(vLLM 재작성 + 재검색 + 리랭킹).
 CRAG_MAX_RETRIES = 2
 
+# 시맨틱 라우터 — 정규식 게이트가 못 잡은 표현의 경로 의도 분류(rag/semantic_router.py).
+# 두 임계 모두 precision-first: 애매하면 경로를 고르지 않고 None → 기존 흐름이 받는다.
+#   MIN_SCORE  : 최고 유사도 하한. 이 아래는 "아무 경로와도 안 닮음".
+#   MIN_MARGIN : 1위 − 2위 하한. 팽팽하면 판정불가(judge_coverage 3-값과 같은 철학).
+# 값 근거는 `make eval-semantic-route` 의 실측 분포. 예시 문장을 고치면 재보정 대상.
+SEMANTIC_ROUTE_MIN_SCORE = 0.60
+SEMANTIC_ROUTE_MIN_MARGIN = 0.02
 
 # OCR — PP-Structure
 # 입구 필터 1: 파일 크기 < 100B면 1~2픽셀 PNG 확정 (빈 XObject), cv2 디코딩 전 차단.

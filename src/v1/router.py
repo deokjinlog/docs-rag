@@ -50,6 +50,7 @@ from .rag.coverage_sql import (
 from .rag.exclusion_sql import is_exclusion_query, format_exclusions
 from .rag.catalog_sql import is_catalog_query, find_covered, format_catalog
 from .rag.waiting_sql import is_waiting_query, pick_subcontract, format_waiting
+from .rag.semantic_router import route_semantic
 from .schemas import (
     AnswerRequest,
     CatalogRequest,
@@ -80,6 +81,11 @@ CRITIC_DISPATCH_ENABLED = os.environ.get("CRITIC_DISPATCH_ENABLED", "false").low
 # 기본 on(검증됨: amount 게이트 precision + payout 골든 5/5). amount 게이트 통과 + select_payout
 # hit여야 발동(2중 안전), 아니면 RAG 그대로. 문제 시 SQL_ROUTE_ENABLED=false로 즉시 끔.
 SQL_ROUTE_ENABLED = os.environ.get("SQL_ROUTE_ENABLED", "true").lower() == "true"
+# 시맨틱 라우터(2단계) 토글 — **기본 off**.
+# 의도 정확도 0.839 · 오라우팅 0.000 이지만, 예시 문장을 골든 실패를 보고 고쳤으므로
+# 그 수치는 **in-sample**이다. CLAUDE.md "검증된 것만 메인 경로에"(precision≥0.9를 **독립**
+# 평가셋에서) 규율상 held-out 셋 재측정 전엔 켜지 않는다. CRITIC_DISPATCH_ENABLED 와 같은 취급.
+SEMANTIC_ROUTE_ENABLED = os.environ.get("SEMANTIC_ROUTE_ENABLED", "false").lower() == "true"
 
 
 router = APIRouter()
@@ -297,10 +303,36 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             }
             api_logger.info(f"쿼리 라우팅: strategy={route.strategy.value}, type={route.query_type.value}")
 
+            # 2단계 시맨틱 라우터 — **정규식이 전부 miss 일 때만** 돈다.
+            #
+            # Why 조건부: 라우팅에 임베딩 1회(~200ms)가 붙는데 SQL 결정론 경로의 p50은
+            # 9.8ms다. 무조건 돌리면 빠른 경로가 20배 느려진다 — 정규식이 잡은 건 이미
+            # 정답이므로(eval_sql_routing 31/31) 다시 물어볼 이유도 없다. 정규식이 놓쳐
+            # 어차피 RAG(초 단위)로 갈 질의에만 200ms를 쓴다.
+            _sem: str | None = None
+            if SQL_ROUTE_ENABLED and SEMANTIC_ROUTE_ENABLED:
+                _gates = (is_payout_amount_query, is_terms_query, is_coverage_query,
+                          is_catalog_query, is_waiting_query, is_exclusion_query)
+                if not any(g(body.query) for g in _gates):
+                    try:
+                        _hit = route_semantic(body.query)
+                    except Exception as exc:          # 라우팅 보조라 실패해도 본 흐름은 계속
+                        api_logger.warning(f"시맨틱 라우터 실패 — 정규식 결과 유지: {exc}")
+                        _hit = None
+                    if _hit is not None:
+                        _sem = _hit.route
+                        rec.route["semantic"] = {
+                            "route": _hit.route, "score": round(_hit.score, 4),
+                            "margin": round(_hit.margin, 4), "runner_up": _hit.runner_up,
+                        }
+                        api_logger.info(
+                            f"시맨틱 라우팅: {_hit.route} (score={_hit.score:.3f} "
+                            f"margin={_hit.margin:.3f}) — 정규식 miss 보완")
+
             # SQL 경로 자동 라우팅 (B5) — "얼마/지급률" 결정론 질의는 payout_rule에서 집어온다.
             # amount 게이트(지급액 질의만) + select_payout hit 둘 다여야 발동, 아니면 RAG 그대로
             # (담보만 겹치는 해석 질의는 게이트가, 담보/규칙 미매칭은 hit=None이 막는 2중 안전).
-            if SQL_ROUTE_ENABLED and is_payout_amount_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_payout_amount_query(body.query) or _sem == "payout"):
                 _repo = PayoutRepository(db)
                 # 브랜드가 있으면 그 base로 스코프 — 교차회사 오염 차단. coverage 분기가 같은
                 # 이유로 이미 하던 것을 payout 에도 맞춘다. 실측 버그: "골든라이프 중환자실
@@ -335,7 +367,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
 
             # SQL 경로 — 계약조건("언제까지?": 청약철회·갱신). terms 게이트 + 담보 키워드로 상품
             # 해소되면 결정론(준용 NULL 포함), 아니면 RAG. amount(payout)와 배타.
-            if SQL_ROUTE_ENABLED and is_terms_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_terms_query(body.query) or _sem == "terms"):
                 # 상품 해소: 상품명 키워드(골든라이프·자녀 등)로 base 상품ID 우선 해소(KB는 base
                 # product_name이 뭉개져 LIKE 불가), 없으면 담보 키워드 LIKE 폴백. document_id는
                 # product_id가 아니라 무시(precision-first — 못 짚으면 아래 None→RAG).
@@ -367,7 +399,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
 
             # SQL 경로 — 보장판정("이 병 보장돼요?": 별표3 ICD). coverage 게이트 + 코드 특정되면
             # 결정론 3-값 판정, 아니면 RAG(병명→코드 못 짚으면 RAG 소관).
-            if SQL_ROUTE_ENABLED and is_coverage_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_coverage_query(body.query) or _sem == "coverage"):
                 _code = extract_code(body.query)
                 # 브랜드(KB 골든라이프 등) 있으면 그 base로 스코프 — 교차회사 오염 차단(다이렉트
                 # 암진단자금 C73~C75가 KB 암 질의를 가로채지 않게). 브랜드 없으면 None→전체(다이렉트 유지).
@@ -395,7 +427,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             # SQL 경로 — 담보 catalog 멤버십("이 상품에 X 담보 있어?"). coverage(ICD 코드) 뒤 —
             # 코드 없는 "보장돼?"에 브랜드+담보명이 있으면 특약 목록에서 결정론 확정. 못 찾으면 부재
             # 단정 안 하고 RAG(동의어·다른 표기 가능성, precision-first).
-            if SQL_ROUTE_ENABLED and is_catalog_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_catalog_query(body.query) or _sem == "catalog"):
                 _cpid = resolve_base_product_id(body.query)
                 _catalog = CoverageRepository(db).list_catalog(_cpid) if _cpid else []
                 _covered = find_covered(_catalog, body.query) if _catalog else []
@@ -419,7 +451,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
 
             # SQL 경로 — 면책기간·감액("언제부터 온전히 받나?"). KB 특약별 면책기간(가입 후 N일
             # 보장제외)·감액(1년간 M%). 브랜드+담보로 특약 해소, 못 짚거나 데이터 없으면 RAG.
-            if SQL_ROUTE_ENABLED and is_waiting_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_waiting_query(body.query) or _sem == "waiting"):
                 _wpid = resolve_base_product_id(body.query)
                 _wrows = CoverageRepository(db).get_waiting_facts(_wpid) if _wpid else []
                 _wrow = pick_subcontract(_wrows, body.query) if _wrows else None
@@ -444,7 +476,7 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
 
             # SQL 경로 — 면책 상세("뭐가 면책?"). coverage(코드 판정) 뒤 — "보장 안 되는 경우?"는
             # coverage 게이트가 켜지나 코드 없어 여기로 떨어진다. 상품은 담보 키워드로 해소.
-            if SQL_ROUTE_ENABLED and is_exclusion_query(body.query):
+            if SQL_ROUTE_ENABLED and (is_exclusion_query(body.query) or _sem == "exclusion"):
                 _ep = ProductRepository(db).get_terms(
                     resolve_base_product_id(body.query), coverage_hint(body.query))
                 _excls = PayoutRepository(db).get_exclusions(_ep["product_id"]) if _ep else []

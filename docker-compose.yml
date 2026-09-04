@@ -116,6 +116,9 @@ services:
       FEEDBACK_ENABLED: "${FEEDBACK_ENABLED:-true}"
       # Critic dispatch 토글 — 기본 off (실측 hard_fail 대부분 오탐, design-retrospective §1.5)
       CRITIC_DISPATCH_ENABLED: "${CRITIC_DISPATCH_ENABLED:-false}"
+      # 시맨틱 라우터(2단계) 토글 — 기본 off. 의도 정확도가 in-sample 이라
+      # held-out 평가셋 재측정 전엔 메인 경로에 안 올린다(rag/semantic_router.py 참조)
+      SEMANTIC_ROUTE_ENABLED: "${SEMANTIC_ROUTE_ENABLED:-false}"
       # 임베더·리랭커를 CPU로 → GPU는 vLLM 독점 (8GB 프로파일)
       CUDA_VISIBLE_DEVICES: "-1"
     volumes:
