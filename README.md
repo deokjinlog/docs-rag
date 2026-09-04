@@ -102,19 +102,43 @@ flowchart LR
 
 ## 평가
 
-수치를 자랑하기보다 **측정이 스스로 개선을 구동하는 루프**를 설계했다. 정답 근거가 달린 골든셋 17종을 단계별로 쌓았다(judge는 serving 모델과 분리해 self-preference bias 회피).
+수치를 자랑하기보다 **측정이 스스로 개선을 구동하는 루프**를 설계했다. 정답 근거가 달린 골든셋 18종을 단계별로 쌓았다(judge는 serving 모델과 분리해 self-preference bias 회피).
 
 | 축 | 지표 | 현재 |
 |---|---|---|
 | 검색 품질 | recall@k · MRR (원문 앵커 라벨, 재청킹 무관) | **recall@5/@10=1.00 · @3=0.96 · @1=0.76 · MRR=0.86** (25문항) |
-| 추출·조립 | 파싱·payout·면책·완결성·reconcile 등 | **골든 12종 green** (`make check`, 회귀 시 exit 1) |
-| SQL 라우팅 | /answer 결정론 분기 | **accuracy 1.0** (`make eval-sql-routing`) |
-| 서빙 지연 | SQL 경로 p50 ([bench](docs/latency-bench.md)) | **~6ms** (임베더·리랭커·LLM 미사용 → GPU 무관) · 피크 ~183 QPS |
+| 추출·조립 | 파싱·payout·면책·완결성·reconcile 등 | **골든 13종 green** (`make check`, 회귀 시 exit 1) |
+| SQL 라우팅 | /answer 결정론 분기 (부정 5문항 포함) | **31/31 = 1.00** (`make eval-sql-routing`) |
+| 서빙 지연 | 엔드포인트별 p50/p95 ([bench](docs/latency-bench.md)) | **SQL 4~9ms · retrieve 15.7s** — 아래 표 |
 | 생성 품질 | RAGAS Faithfulness · Relevancy | `eval_ragas.py` (대형 GPU 전제) |
 
-**현재 코퍼스** — 보험약관 **17문서·6,299청크·5개 회사**(라이나·AXA·다이렉트·KB·회사미상). 관계형은 product 802(특약 794 포함)·clause 4,988·payout_rule 141·coverage_range 83.
+### 서빙 지연 — 3경로 설계의 실측 payoff
 
-> **측정이 병목을 특정하고 → 수정을 검증한다.** 청킹 heading만 고쳤을 땐 recall이 안 움직였는데, 측정이 진짜 레버(리랭커 입력=임베딩 텍스트 일관성)를 가리켜 `recall@1 0.58→0.83`. 코퍼스를 5문서 758청크 → 17문서 6,299청크로 8배 키워도 **recall@5=1.00 무회귀** — 경쟁 청크가 늘어도 순위가 흐려지지 않았다. 실측 기록은 [eval-and-golden.md §9](docs/eval-and-golden.md).
+같은 질문이라도 **어느 경로로 가느냐가 2,500배**를 가른다. "얼마·언제·보장·면책"을 SQL로 보내는 이유가 이 표다.
+
+| 경로 | p50 | p95 | 무엇을 하나 |
+|---|---|---|---|
+| `/terms` | **4.6ms** | 14.3ms | PostgreSQL 조회만 |
+| `/exclusion` | **5.4ms** | 8.1ms | 〃 |
+| `/coverage` | **6.4ms** | 13.6ms | 〃 + ICD 범위 판정 |
+| `/payout` | **8.9ms** | 240.6ms | 〃 (p95 꼬리 = 첫 요청 콜드스타트) |
+| `/answer` → SQL | **9.8ms** | 17.1ms | 라우팅 + SQL (LLM 미호출) |
+| `/retrieve` | **15,699ms** | 19,159ms | BGE-M3 임베딩 + Qdrant + CrossEncoder 리랭킹 (CPU) |
+
+**p50/p95는 요청 1건당 시간**(처리 개수가 아니다). p95는 "스무 번 중 한 번은 이보다 느리다" — 최댓값 대신 이걸 보는 건
+사고 한 번에 끌려다니지 않으면서 "자주 겪는 나쁜 경우"를 잡기 때문. `/payout`의 p50 8.9ms vs p95 240ms 격차가 그 예다
+(p50만 봤으면 콜드스타트 꼬리를 놓친다).
+
+부하 스윕(`/payout`, `make bench-load`)에선 **동시성을 8배 올려도 처리량은 1.6배(113→183 QPS)뿐이고 지연은 5.5배(7.8→42.6ms)** 뛴다.
+이미 동시성 4에서 178 QPS로 포화 — **적정 동시성은 2~4**이고 그 위는 지연만 손해다.
+
+> 로컬 RTX 4060 8GB · WSL2 · 임베더/리랭커 CPU 기준. `/retrieve`가 느린 건 하드웨어 탓이지 설계 탓이 아니며,
+> 그렇기에 결정론 질의를 SQL로 빼는 이득이 이 환경에서 특히 크다.
+
+**현재 코퍼스** — 보험약관 **22문서·8,733청크·9개 회사**(라이나·AXA·다이렉트·KB·삼성화재·삼성다이렉트·현대해상·DB손보·회사미상).
+관계형은 product 1,309(특약 포함)·clause 8,084·payout_rule 235·coverage_range 83.
+
+> **측정이 병목을 특정하고 → 수정을 검증한다.** 청킹 heading만 고쳤을 땐 recall이 안 움직였는데, 측정이 진짜 레버(리랭커 입력=임베딩 텍스트 일관성)를 가리켜 `recall@1 0.58→0.83`. 코퍼스를 5문서 758청크 → 22문서 8,733청크로 11배 키워도 **recall@5=1.00 무회귀** — 경쟁 청크가 늘어도 순위가 흐려지지 않았다. 실측 기록은 [eval-and-golden.md §9](docs/eval-and-golden.md).
 
 ## 설계 철학 · 한계
 
