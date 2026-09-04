@@ -221,10 +221,14 @@ def retrieve(body: RetrieveRequest, background_tasks: BackgroundTasks):
                 include_keywords=body.include_keywords,
                 exclude_keywords=body.exclude_keywords,
             )
-            ranked = search_and_rerank(
-                body.query, body.top_k, query_filter,
-                dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
-            )
+            # 검색+리랭킹은 이 파이프라인의 최대 단일 비용(실측 p50 15.7s, CPU 리랭커).
+            # 여기에 span이 없으면 total 만 보이고 "어디가 느린지"를 못 짚는다 — 단계별
+            # 분해가 없으면 최적화가 찍기가 된다.
+            with trace_span("search_rerank"):
+                ranked = search_and_rerank(
+                    body.query, body.top_k, query_filter,
+                    dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
+                )
 
             if not ranked:
                 elapsed_ms = round((time.time() - t0) * 1000)
@@ -476,10 +480,11 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
             current_query = body.query
             retry_count = 0
 
-            ranked = search_and_rerank(
-                current_query, body.top_k, query_filter,
-                dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
-            )
+            with trace_span("search_rerank"):
+                ranked = search_and_rerank(
+                    current_query, body.top_k, query_filter,
+                    dense_factor=route.dense_factor, bm25_factor=route.bm25_factor,
+                )
 
             initial_score = float(ranked[0][1]) if ranked else None
             rec.crag["attempts"].append({
@@ -493,11 +498,14 @@ def answer(body: AnswerRequest, background_tasks: BackgroundTasks, db: Session =
                 retry_count += 1
                 api_logger.info(f"CRAG 재검색 {retry_count}/{CRAG_MAX_RETRIES}")
                 current_query = rewrite_query(current_query)
-                ranked = search_and_rerank(
-                    current_query, body.top_k, query_filter,
-                    dense_factor=original_route.dense_factor,
-                    bm25_factor=original_route.bm25_factor,
-                )
+                # CRAG 재검색도 같은 span 이름 — trace_span 은 재시도 시 누적 합산한다
+                # (CLAUDE.md 도메인 용어). 즉 search_rerank 는 '검색에 쓴 총 시간'이 된다.
+                with trace_span("search_rerank"):
+                    ranked = search_and_rerank(
+                        current_query, body.top_k, query_filter,
+                        dense_factor=original_route.dense_factor,
+                        bm25_factor=original_route.bm25_factor,
+                    )
                 rec.crag["attempts"].append({
                     "attempt": retry_count,
                     "top_score": float(ranked[0][1]) if ranked else None,

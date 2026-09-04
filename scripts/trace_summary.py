@@ -180,18 +180,40 @@ def _aggregate_decomposition(records: Records) -> dict[str, Any]:
 
 
 def _aggregate_rerank(records: Records) -> dict[str, Any]:
+    """top-1 점수 분포 + **top1↔top2 격차**.
+
+    Why 격차: 답하기 전에 "모른다"를 알 수 있는 거의 유일한 신호다.
+      · top-1 점수가 낮다      → 도메인 밖 질문 (검색이 아무것도 못 찾음)
+      · 격차가 작다(동점권)     → 모호한 질문 (여러 청크가 똑같이 그럴듯함)
+    둘 다 **저신뢰 검색인데 답변까지 간** 조용한 실패(silent failure)의 전조다.
+    임계는 아직 안 정한다 — 분포를 먼저 보고 데이터가 임계를 말하게 한다(measure-first).
+    """
     top1: list[float] = []
+    gaps: list[float] = []
+    lowconf = 0
     for r in records:
         scores = (r.get("retrieval") or {}).get("rerank_scores") or []
-        if scores:
-            top1.append(float(scores[0]))
+        if not scores:
+            continue
+        top1.append(float(scores[0]))
+        if len(scores) >= 2:
+            gaps.append(round(float(scores[0]) - float(scores[1]), 4))
+        # CRAG 재검색 임계(0.3)를 저신뢰 기준으로 재사용 — 그 아래인데 답변까지 간 건수
+        if float(scores[0]) < 0.3 and r.get("endpoint") == "answer":
+            lowconf += 1
     return {
         "rerank_top1": {
             "percentiles": percentiles(top1),
             "histogram": histogram(top1),
             "mean": round(statistics.mean(top1), 4) if top1 else None,
             "count": len(top1),
-        }
+        },
+        "rerank_gap": {
+            "percentiles": percentiles(gaps),
+            "mean": round(statistics.mean(gaps), 4) if gaps else None,
+            "count": len(gaps),
+        },
+        "low_confidence_answers": lowconf,
     }
 
 
@@ -509,6 +531,13 @@ def _render_rerank(summary: dict[str, Any]) -> None:
         f"  p10={p['p10']}  p25={p['p25']}  p50={p['p50']}  "
         f"p75={p['p75']}  p90={p['p90']}  p99={p['p99']}  mean={rt['mean']}"
     )
+    g = summary.get("rerank_gap") or {}
+    if g.get("count"):
+        gp = g["percentiles"]
+        print(f"  top1↔top2 격차: p10={gp['p10']} p50={gp['p50']} p90={gp['p90']} "
+              f"mean={g['mean']}   ← 작으면 모호(동점권)")
+    lc = summary.get("low_confidence_answers", 0)
+    print(f"  저신뢰(top1<0.3) 답변: {lc}건" + ("   ← 조용한 실패 후보" if lc else ""))
     hist = rt["histogram"]
     max_count = max(hist.values()) or 1
     for bin_range, count in hist.items():
