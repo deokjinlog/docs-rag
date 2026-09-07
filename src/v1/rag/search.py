@@ -115,9 +115,28 @@ def _rerank_text(payload: dict) -> str:
     return f"{heading_path}\n\n{content}" if heading_path else content
 
 
+# 재작성 결과가 이보다 길면 쿼리가 아니라 사설이다. 원 질의는 보통 10~40자고, 재작성도
+# 같은 자릿수여야 한다(REWRITE_PROMPT 가 "검색어 형태로" 를 요구). 넉넉히 3배 여유.
+REWRITE_MAX_CHARS = 120
+
+
 def rewrite_query(query: str) -> str:
-    """LLM으로 쿼리 재작성 — CRAG 루프에서 검색 품질 낮을 때 호출."""
+    """LLM으로 쿼리 재작성 — CRAG 루프에서 검색 품질 낮을 때 호출.
+
+    **나쁜 재작성은 재작성 안 한 것보다 나쁘다** — 그래서 결과가 수상하면 원 질의를 쓴다.
+    실측(2026-09-07) 두 가지 사고가 났다:
+      ① reasoning 모델이 토큰 한도에 걸려 `</think>` 없이 잘림 → 추론 전문 5,000자가
+         그대로 검색 쿼리가 됨(query_embed 200ms → 8,181ms). clients.invoke_clean 에서
+         닫히지 않은 블록도 지우도록 고쳤지만, 여기서 한 번 더 막는다(다층 방어).
+      ② 추론만 하다 잘리면 strip 후 **빈 문자열** — 빈 쿼리로 검색하면 잡음만 걸린다.
+    둘 다 원 질의 폴백이 정답이다. CRAG 는 어차피 실패하면 거절로 가므로 손해가 없다.
+    """
     rewritten = invoke_clean(REWRITE_PROMPT.format_messages(query=query))
+    if not rewritten or len(rewritten) > REWRITE_MAX_CHARS:
+        api_logger.warning(
+            f"CRAG 재작성 폐기({'빈 값' if not rewritten else f'{len(rewritten)}자 초과'}) "
+            f"→ 원 질의 유지: '{query}'")
+        return query
     api_logger.info(f"CRAG 쿼리 재작성: '{query}' → '{rewritten}'")
     return rewritten
 
