@@ -33,16 +33,21 @@ fail=0
 
 say() { printf "  %-28s %s\n" "$1" "$2"; }
 
-# vllm 은 모델 가중치가 없으면 **컨테이너 생성 자체가 실패**하고, api 가 depends_on 으로
-# 걸려 있어 `docker compose up -d` 전체가 거기서 중단된다(실측: api·celery·flower 가
-# Created 로 멈춤). 그래서 vllm 은 조건부로 따로 띄우고 앱 서비스는 --no-deps 로 올린다.
 HAS_LLM=0
 [ -s model/Qwen3-4B-AWQ/config.json ] && HAS_LLM=1
 
+# 순서: 인프라 → vllm(느림, 있으면) → 앱.
+#
+# vllm 을 **먼저** 띄우는 게 맞다 — 서빙까지 2분 38초 걸리므로 일찍 시작할수록 빨리
+# 준비된다. 앱은 수 초면 뜨고 vLLM 없이도 SQL·검색·거절 경로가 다 동작하니 기다릴 이유가
+# 없다. 즉 "vllm 이 먼저 뜨는 것"은 문제가 아니었고, 문제는 compose 의 **hard 의존**이었다
+# (vllm 생성 실패 → up 전체 중단 → api·celery 가 Created 로 방치).
+# 그건 docker-compose.yml 의 `vllm: required: false` 로 근본 해결했다.
+# 모델이 없으면 여기서 아예 건너뛴다 — 재시작 루프로 CPU 를 태우지 않기 위해.
 echo "▶ 스택 기동"
 docker compose up -d postgres qdrant rabbitmq odl paddle >/dev/null 2>&1
 [ "$HAS_LLM" = 1 ] && docker compose up -d vllm >/dev/null 2>&1
-docker compose up -d --no-deps api celery flower >/dev/null 2>&1
+docker compose up -d api celery flower >/dev/null 2>&1
 
 echo "▶ 컨테이너 상태"
 for svc in postgres qdrant rabbitmq odl paddle api celery; do
