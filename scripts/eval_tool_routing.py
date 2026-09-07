@@ -66,7 +66,10 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "coverage": {"type": "string", "description": "담보명. 예: 중환자실입원급여금"},
             "cause": {"type": "string", "enum": ["질병", "재해"]},
-            "period_bucket": {"type": "string", "description": "가입 후 경과기간. 예: 1년이내"},
+            # enum 으로 못박는다 — 자유 문자열이면 모델이 "2년이상" 같은 **없는 구간**을
+            # 만들어내고, select_payout 이 못 알아들어 엉뚱한 행(90일이하)을 고른다(실측).
+            "period_bucket": {"type": "string", "description": "가입 후 경과기간 구간",
+                              "enum": ["90일이하", "90일초과1년미만", "1년이상"]},
         }, "required": ["coverage"]}}},
     {"type": "function", "function": {
         "name": "lookup_terms",
@@ -79,9 +82,12 @@ TOOLS = [
         "description": ("질병분류코드(ICD/KCD)나 병명이 보장 범위에 드는지 판정한다. "
                         "'C50 보장되나요', '위암도 되나요' 류. 코드나 구체적 병명이 핵심."),
         "parameters": {"type": "object", "properties": {
+            # product 가 없으면 전체 상품에서 코드를 찾아 **교차회사 오염**이 난다
+            # (KB 골든라이프 질의가 다이렉트 담보로 리다이렉트되던 실측 사고).
+            "product": {"type": "string", "description": "상품명·브랜드. 질의에 있으면 반드시 채운다"},
             "code": {"type": "string", "description": "질병분류코드. 예: C50, D05"},
-            "disease": {"type": "string", "description": "병명. 코드가 없을 때"},
-            "coverage": {"type": "string", "description": "담보명. 같은 코드도 담보 따라 갈림"},
+            "disease": {"type": "string", "description": "병명. 코드가 없을 때만"},
+            "coverage": {"type": "string", "description": "판정 대상 담보명. 같은 코드도 담보 따라 갈림"},
         }}}},
     {"type": "function", "function": {
         "name": "list_coverages",

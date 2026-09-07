@@ -17,30 +17,36 @@
 미보장이 확정인데 지급률을 붙이거나(모순), 없는 담보에 금액을 붙이거나(환각).
 그래서 금지툴은 오답보다 무겁게 본다.
 
-**첫 측정 (2026-09-07, Qwen3-4B-AWQ, n=8)** — 결과가 위험의 위치를 바꿨다:
+**측정 (2026-09-07, Qwen3-4B-AWQ, n=8)** — 최종 합성만 바꾼 A/B:
 
-    툴 recall     6/8 = 0.75      홉은 대체로 밟는다
-    금지툴 위반   0건             규칙은 지킨다("미보장이면 지급 조회 마라")
-    **요소 recall 3/8 = 0.38**    ← 결정론 결과를 **LLM 이 왜곡**한다
+    최종 합성        툴 recall   요소 recall   금지툴 위반
+    결정론 조립       0.88        **1.00**      0
+    LLM 재서술        0.88        **0.62**      0
 
-실패는 툴 선택이 아니라 **결과 해석**에서 났다:
+**툴 recall 이 동일**하다는 게 핵심이다 — 에이전트가 밟은 홉도, 손에 쥔 사실도 같다.
+유일한 변수는 **누가 답 문장을 쓰느냐**이고, 거기서 38%가 날아간다. LLM 이 잃은 3건:
 
+    MH02  "제자리암진단자금" 이름 누락
     MH04  결정론 "C73 → 미보장(암진단비) → 실제 담보: 갑상선암"
-          에이전트 "암진단비 담보에 따라 갑상선암(C73)은 보장됩니다"      ← 정반대
-    MH03  결정론 "암진단자금 [1년이상] → 가입금액의 100%"
-          에이전트 "가입금액의 50%를 지급합니다"                          ← 숫자 왜곡
-    MH01  lookup_payout 을 **부르지도 않고** "지급액은 가입금액의 10%"     ← 환각
-    MH08  결정론 "Z99 → 판정불가"
-          에이전트 "Z99 는 '기타 만성질환'에 해당하며"                     ← 사실 창작
+          → LLM "갑상선암(C73)은 보장됩니다"                    ← 판정을 뒤집음
+    MH08  결정론 "Z99 → 판정불가" → LLM 이 '기타 만성질환'이라 창작
 
-MH04 가 특히 무겁다. 바로 이 세션에서 `/coverage` 의 교차회사 오염을 고쳐 결정론 계층이
-정답을 내게 만들었는데, **LLM 이 그 정답을 읽고 뒤집었다.** 소비자한테는 직접 손해다.
+MH04 가 특히 무겁다 — 같은 세션에서 /coverage 의 교차회사 오염을 고쳐 결정론이 정답을
+내게 만들었는데 **LLM 이 그 정답을 읽고 뒤집었다.** 소비자한테 직접 손해다.
 
-→ 함의: **최종 합성을 LLM 에 맡기면 안 된다.** 이건 새 발견이 아니라 이 프로젝트가 이미
-   세운 원칙의 실증이다 — eval-and-golden §8 이 `format_answer` 를 **결정론 템플릿**으로
-   둔 이유가 정확히 이것이다. 에이전트는 **어느 툴을 어떤 순서로 부를지**(0.75, 위반 0)까지만
-   맡기고, 답 문장은 format_* 가 짜는 게 맞다.
-   eval_tool_routing(1홉 선택)은 이 위험을 못 봤다 — 멀티홉 골든이라야 드러난다.
+→ **역할 분담이 숫자로 정해졌다.** 에이전트는 "어느 툴을 어떤 순서로"(0.88, 위반 0)까지,
+  답 문장은 결정론 템플릿이 짠다. 새 원칙이 아니라 eval-and-golden §8 이 format_answer 를
+  결정론 템플릿으로 둔 이유의 실증이다. eval_tool_routing(1홉 선택)은 이 위험을 못 봤다 —
+  멀티홉이라야 드러난다.
+
+**부수로 잡힌 것들** (골든이 채점기·스키마의 결함도 같이 검출했다):
+  · 디스패처가 슬롯을 이어붙여 질의를 만들면 **담보 특정성이 뒤집힌다**. code 와 disease 를
+    같이 넣거나 원 시나리오를 덧붙이면 extract_coverage 가 엉뚱한 걸 담보로 잡는다
+    → 툴마다 정해진 문형으로 합성, code 있으면 disease 제외, 시나리오 덧붙이기 금지.
+  · judge_coverage 스키마에 **product 가 없어** 브랜드 스코프가 안 걸렸다 → 추가.
+  · period_bucket 이 자유 문자열이라 모델이 "2년이상"(없는 구간)을 만들었다 → enum 고정.
+  이 셋을 고치자 요소 recall 0.38 → 0.62 → 0.88 → 1.00 으로 올랐다. 즉 **초기 0.38 중
+  상당 부분은 모델이 아니라 배선 결함**이었다 — 골든 없이는 구분이 안 됐을 것이다.
 
 전제: 스택 기동(make up) + vLLM 에 `--enable-auto-tool-choice --tool-call-parser hermes`.
 
@@ -101,17 +107,36 @@ def _dispatch(name: str, args: dict, scenario: str) -> str:
     ep = TOOL2EP.get(name)
     if not ep:
         return f"알 수 없는 도구: {name}"
-    # 인자를 자연어 질의로 합성 — SQL 엔드포인트가 질의 문자열에서 담보·코드·기간을 뽑는다.
-    parts = [str(v) for k, v in args.items() if v and k != "product"]
-    q = " ".join(parts) or scenario
-    if ep in ("payout", "waiting"):
-        q += " 얼마"
+    # 인자 → 자연어 질의 합성. SQL 엔드포인트가 질의 **문자열**에서 담보·코드·기간을 뽑으므로
+    # 슬롯을 아무렇게나 이어붙이면 의미가 뭉개진다.
+    #
+    # 실측 사고: judge_coverage(code=C73, disease=갑상선암, coverage=암진단비) 를
+    # "C73 갑상선암 암진단비 보장되나요" 로 합성했더니 extract_coverage 가 **disease 를
+    # 담보로 오인**해 "C73 ∈ 갑상선암 → 보장" 이 됐다. 정답은 "암진단비엔 미보장 →
+    # 갑상선암으로 리다이렉트"다. 담보 특정성이 통째로 뒤집힌 것 — 슬롯 순서 하나로.
+    # → 툴마다 **정해진 문형**으로 합성하고, code 가 있으면 disease 는 넣지 않는다.
+    prod = (args.get("product") or "").strip()
+    cov = (args.get("coverage") or "").strip()
     if ep == "coverage":
-        q += " 보장되나요"
-    if ep == "catalog":
-        q += " 담보 있어"
-    # 브랜드는 원 질의에 있으므로 함께 넘겨 상품 스코프가 걸리게 한다(교차회사 오염 차단)
-    q = f"{args.get('product', '')} {q}".strip() if args.get("product") else f"{scenario} / {q}"
+        code = (args.get("code") or "").strip()
+        subject = code or (args.get("disease") or "").strip()
+        q = f"{prod} {cov}로 {subject} 보장되나요?" if cov else f"{prod} {subject} 보장되나요?"
+    elif ep == "payout":
+        q = f"{prod} {cov} {args.get('cause') or ''} {args.get('period_bucket') or ''} 얼마?"
+    elif ep == "waiting":
+        q = f"{prod} {cov} 면책기간 얼마?"
+    elif ep == "catalog":
+        q = f"{prod}에 {cov} 담보 있어?"
+    elif ep == "terms":
+        q = f"{prod} 청약철회 언제까지?"
+    else:
+        q = f"{prod} {cov}".strip()
+    q = " ".join(q.split()) or scenario
+    # ⚠ 원 시나리오를 덧붙이지 **않는다**. 브랜드 스코프를 얻으려고 붙였다가 담보 추출이
+    # 통째로 망가졌다 — 실측: "골든라이프 암진단비인데 C73 **갑상선암** 진단이면…" 을 붙이니
+    # extract_coverage 가 시나리오 속 '갑상선암'을 담보로 잡아 "C73 ∈ 갑상선암 → 보장" 이
+    # 됐다. 정답은 "암진단비엔 미보장 → 갑상선암 리다이렉트". 브랜드는 툴 인자 product 로
+    # 받는 게 맞고(스키마에 추가함), 그래야 슬롯이 섞이지 않는다.
     try:
         d = _post(f"{API}/{ep}", {"query": q, "service_code": "01"})
     except Exception as e:
@@ -128,14 +153,42 @@ def _chat(messages: list, timeout: int = 180) -> dict:
     return _post(f"{BASE}/chat/completions", body, timeout)["choices"][0]["message"]
 
 
-def run_agent(scenario: str, show: bool = False) -> tuple[list[str], str]:
-    """에이전트 루프. (호출한 툴 순서, 최종 답)."""
+def assemble_deterministic(facts: list[tuple[str, str]]) -> str:
+    """수집된 툴 결과를 **결정론으로** 엮어 최종 답을 만든다 — LLM 재서술 없음.
+
+    각 툴 결과는 이미 `format_coverage`·`format_payout` 등이 만든 소비자용 문장이다.
+    여기서 하는 일은 순서 보존 + 중복 제거 + 이어붙이기뿐 — 사실을 **다시 쓰지 않는다**.
+    그게 요점이다. LLM 에 재서술을 맡기면 "미보장"이 "보장됩니다"로 뒤집히고 100%가
+    50%가 된다(첫 측정 실측). eval-and-golden §8 의 `format_answer` 와 같은 규율.
+    """
+    seen, out = set(), []
+    for _tool, res in facts:
+        r = res.strip()
+        if not r or r in seen:
+            continue
+        seen.add(r)
+        out.append(r)
+    return "  ".join(out) if out else "확인할 수 있는 결정론 사실이 없습니다(확인 필요)."
+
+
+def run_agent(scenario: str, show: bool = False,
+              synth: str = "llm") -> tuple[list[str], str]:
+    """에이전트 루프. (호출한 툴 순서, 최종 답).
+
+    `synth` — 최종 답을 누가 만드나:
+        "llm"           모델이 툴 결과를 읽고 자연어로 재서술 (기본, 흔한 에이전트 형태)
+        "deterministic" 툴 결과를 그대로 조립 (LLM 재서술 없음)
+    두 모드를 나란히 재면 **LLM 재서술이 얼마나 사실을 훼손하는지**가 분리된다.
+    """
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": scenario}]
     called: list[str] = []
+    facts: list[tuple[str, str]] = []
     for _ in range(MAX_HOPS):
         m = _chat(msgs)
         tcs = m.get("tool_calls") or []
         if not tcs:
+            if synth == "deterministic":
+                return called, assemble_deterministic(facts)
             return called, (m.get("content") or "")
         msgs.append({"role": "assistant", "content": m.get("content") or "", "tool_calls": tcs})
         for tc in tcs:
@@ -146,15 +199,20 @@ def run_agent(scenario: str, show: bool = False) -> tuple[list[str], str]:
                 args = {}
             called.append(fn["name"])
             result = _dispatch(fn["name"], args, scenario)
+            facts.append((fn["name"], result))
             if show:
                 print(f"      ↳ {fn['name']}({json.dumps(args, ensure_ascii=False)[:60]})")
                 print(f"        → {result[:110]}")
             msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+    if synth == "deterministic":
+        return called, assemble_deterministic(facts)
     return called, "(홉 한도 초과)"
 
 
 def main() -> int:
     show = "--show" in sys.argv
+    synth = "deterministic" if "--deterministic" in sys.argv else "llm"
+    print(f"  최종 합성: {synth}")
     rows = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
     tool_ok = elem_ok = 0
     violations, tool_miss, elem_miss = [], [], []
@@ -162,7 +220,7 @@ def main() -> int:
     for r in rows:
         print(f"\n  [{r['id']}] {r['scenario'][:52]}   ({r['pattern']})")
         try:
-            called, answer = run_agent(r["scenario"], show)
+            called, answer = run_agent(r["scenario"], show, synth)
         except Exception as e:
             print(f"      ⚠ {type(e).__name__}: {e}")
             tool_miss.append((r["id"], "ERROR")); elem_miss.append((r["id"], "ERROR"))
