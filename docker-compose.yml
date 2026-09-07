@@ -100,6 +100,10 @@ services:
       - "5002:5002"
     volumes:
       - ./data:/data
+      # docling 레이아웃 모델(docling-layout-heron 등)은 **첫 변환 요청 때 HF에서 내려받는다**.
+      # 캐시가 컨테이너 안에만 있으면 --force-recreate 할 때마다 재다운로드 → 첫 요청 타임아웃.
+      # paddle 이 paddle_cache 로 같은 문제를 이미 푼 패턴을 그대로 따른다.
+      - odl_hf_cache:/root/.cache/huggingface
     restart: unless-stopped
 
   api:
@@ -179,3 +183,4 @@ volumes:
   qdrant_data:
   rabbitmq_data:
   paddle_cache:
+  odl_hf_cache:

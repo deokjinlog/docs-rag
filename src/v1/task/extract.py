@@ -1,7 +1,12 @@
-"""PDF 추출 태스크.
+r"""PDF 추출 태스크.
 ODL HTTP API로 PDF를 Markdown + JSON으로 변환.
 ≤200p: docling-fast 시도 → 실패 시 Java fallback.
 >200p: Java-only (docling-fast 스킵).
+
+⚠ 폴백은 **무성 열화**다 — 하이브리드가 죽어도 파이프라인은 통과한다. 그래서 실패는
+ERROR 로 남기고, 모드 분포(docling/java/java-direct)를 주기적으로 확인해야 한다:
+    docker compose logs celery | grep -oE "\[(docling|java|java-direct)\]$" | sort | uniq -c
+docling 이 0 이면 ML 경로가 고장난 것이다(과거 실측 사례: easyocr 미설치).
 상태: 00 → 22 → 21 (실패 시 91).
 """
 
@@ -146,7 +151,13 @@ def run_extract(pdf_path: Path, output_dir: Path) -> str:
     try:
         _run_odl(pdf_path, output_dir, hybrid="docling-fast")
     except Exception as e:
-        logger.warning(f"[docling-fast] 실패: {pdf_path.name} - {e}")
+        # ERROR로 올린다(WARNING 아님) — 폴백이 있어 파이프라인은 통과하지만 **품질이 조용히
+        # 열화**되기 때문. 실측(2026-09-07): 이미지에 easyocr 이 없어 docling 초기화가
+        # ImportError 로 죽는 바람에 하이브리드가 **한 번도 성공한 적이 없었고**(모드 분포
+        # java 9 · java-direct 1 · docling 0), 58건이 전부 조용히 java 로 떨어졌다.
+        # ML 레이아웃 분석이 통째로 빠졌는데 로그 어디에도 "고장"이라는 신호가 없었다.
+        # 거절 게이트에서 잡은 '조용한 실패'와 같은 부류 — 폴백은 유지하되 소리는 내게 한다.
+        logger.error(f"[docling-fast] 실패 → Java 폴백 (품질 열화): {pdf_path.name} - {e}")
 
     json_path = output_dir / f"{file_stem}.json"
     if json_path.exists() and check_docling_success(json_path):
