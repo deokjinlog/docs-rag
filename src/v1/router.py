@@ -813,13 +813,20 @@ def coverage(body: CoverageRequest, db: Session = Depends(get_db)):
     """
     _apply_input_guard(body)
     code = extract_code(body.query)
-    ranges = CoverageRepository(db).get_ranges(body.product_id)
+    # 브랜드(KB 골든라이프 등)를 상품으로 해소 — **교차회사 오염 차단**.
+    # /answer 의 coverage 분기는 이미 하던 것을 사이드카가 빼먹고 있었다(다른 5개 사이드카는
+    # 다 하고 있었다). 실측 사고: "골든라이프 암진단비 C73 보장돼?" 가 KB 골든라이프의
+    # **갑상선암**(C73) 대신 다이렉트 상품의 **암진단자금**(C73~C75)으로 리다이렉트하고
+    # 그 지급률 50%까지 붙였다 — 소비자가 자기 상품 아닌 값을 받는다.
+    # payout 브랜치가 같은 이유로 이미 고쳐진 적 있다(라이나 중환자실 1% 오염).
+    _pid = body.product_id or resolve_base_product_id(body.query)
+    ranges = CoverageRepository(db).get_ranges(_pid)
     verdict = judge_coverage(code, ranges, extract_coverage(body.query)) if code and ranges else None
     return {
         "query": body.query,
         "route": "sql",
         "matched": verdict is not None,   # 코드 특정 + 판정 근거 존재 (판정불가도 결정론 답)
-        "answer": _coverage_answer_reconciled(db, body.product_id, code, verdict),  # 판정 + payout 정합
+        "answer": _coverage_answer_reconciled(db, _pid, code, verdict),  # 판정 + payout 정합
         "code": code,
         "verdict": verdict,   # {verdict, coverage, redirect_coverage, evidence}. 근거
     }

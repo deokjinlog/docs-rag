@@ -47,6 +47,9 @@ eval-semantic-route: ## 시맨틱 라우터 의도 분류 채점 (임베딩 모�
 eval-tool-route: ## 툴콜링 라우팅 채점 (vLLM 에 --enable-auto-tool-choice 필요)
 	python3 scripts/eval_tool_routing.py
 
+eval-multihop: ## 멀티홉(에이전트) 골든 — 툴 recall·금지툴·요소 recall (스택 + vLLM 필요)
+	python3 scripts/eval_multihop.py
+
 up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 compose up 대신 이걸 쓴다
 	bash scripts/stack_up.sh
 
