@@ -81,11 +81,27 @@ CRITIC_DISPATCH_ENABLED = os.environ.get("CRITIC_DISPATCH_ENABLED", "false").low
 # 기본 on(검증됨: amount 게이트 precision + payout 골든 5/5). amount 게이트 통과 + select_payout
 # hit여야 발동(2중 안전), 아니면 RAG 그대로. 문제 시 SQL_ROUTE_ENABLED=false로 즉시 끔.
 SQL_ROUTE_ENABLED = os.environ.get("SQL_ROUTE_ENABLED", "true").lower() == "true"
-# 시맨틱 라우터(2단계) 토글 — **기본 off**.
-# 의도 정확도 0.839 · 오라우팅 0.000 이지만, 예시 문장을 골든 실패를 보고 고쳤으므로
-# 그 수치는 **in-sample**이다. CLAUDE.md "검증된 것만 메인 경로에"(precision≥0.9를 **독립**
-# 평가셋에서) 규율상 held-out 셋 재측정 전엔 켜지 않는다. CRITIC_DISPATCH_ENABLED 와 같은 취급.
-SEMANTIC_ROUTE_ENABLED = os.environ.get("SEMANTIC_ROUTE_ENABLED", "false").lower() == "true"
+# 시맨틱 라우터(2단계) 토글 — **기본 on** (held-out 검증 통과, 2026-09-07).
+#
+# 처음엔 off 였다. in-sample 0.839/오라우팅 0.000 은 예시를 골든 실패 보고 고친 수치라
+# CLAUDE.md "precision ≥ 0.9 를 **독립** 평가셋에서" 규율을 못 만족했기 때문.
+# `golden_routing_holdout.jsonl`(n=28, 실제 DB 담보·상품·조제목으로 만든 튜닝 미사용 질의)로
+# 재측정해 켰다:
+#
+#     정확도 0.714 · 기권 7 · 오라우팅 1 → **precision 20/21 = 0.952** ≥ 0.9 ✅
+#
+# precision 분모에서 기권을 뺀 건 precision-first 정의 그대로다 — "뽑은 건 맞기".
+# 기권은 안 뽑은 것이고 기존 정규식·RAG 흐름이 그대로 받으므로 회귀가 아니다.
+#
+# 유일한 오라우팅도 **무해함을 실측 확인**했다: "…계약을 무르려면 며칠 안에" 가 terms 대신
+# waiting 으로 갔지만 waiting 브랜치가 matched=false 를 내 RAG 로 폴백했다. 구조적으로
+# 오라우팅의 최악 케이스 = 기존 동작(RAG)이다 — 브랜치마다 2차 조건(select/judge miss →
+# 폴백)이 있어서 잘못 고른 경로가 확신에 찬 오답을 내지 못한다. 이 2중 안전이 라우터를
+# 켤 수 있는 근거다.
+#
+# 회귀 게이트: `make eval-semantic-holdout` (baseline data/eval/routing_semantic_baseline.json).
+# 문제 시 SEMANTIC_ROUTE_ENABLED=false 로 즉시 끔.
+SEMANTIC_ROUTE_ENABLED = os.environ.get("SEMANTIC_ROUTE_ENABLED", "true").lower() == "true"
 
 
 router = APIRouter()

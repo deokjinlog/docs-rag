@@ -1,0 +1,28 @@
+{"query":"치핵수술비는 얼마나 나오나요?","intent":"payout","source":"payout_rule.coverage 실재","labeler":"최덕진"}
+{"query":"척추질병수술비 지급 비율이 궁금해요","intent":"payout","source":"payout_rule.coverage 실재","labeler":"최덕진"}
+{"query":"영구치발거치료 받으면 보험금이 어느 정도인가요?","intent":"payout","source":"payout_rule.coverage 실재","labeler":"최덕진"}
+{"query":"갑상선암진단자금은 가입금액 대비 몇 프로예요?","intent":"payout","source":"payout_rule.coverage 실재","labeler":"최덕진"}
+{"query":"희망플러스 자녀보험 계약을 무르려면 며칠 안에 해야 하나요?","intent":"terms","source":"product 브랜드 실재","labeler":"최덕진"}
+{"query":"운전자보험은 자동으로 갱신되는 상품인가요?","intent":"terms","source":"product 브랜드 실재","labeler":"최덕진"}
+{"query":"이 계약 보험기간이 어떻게 끝나나요?","intent":"terms","source":"만기 축","labeler":"최덕진"}
+{"query":"다이렉트 상품 청약 취소 가능 기간 알려주세요","intent":"terms","source":"product 브랜드 실재","labeler":"최덕진"}
+{"query":"C34 코드가 암진단자금 대상에 포함되나요?","intent":"coverage","source":"coverage_range 실재 코드","labeler":"최덕진"}
+{"query":"D01 진단이면 제자리암진단자금 범위인가요?","intent":"coverage","source":"coverage_range D00~D09","labeler":"최덕진"}
+{"query":"골든라이프 암진단비에서 C44는 어떻게 처리되나요?","intent":"coverage","source":"KB 기타피부암 C44","labeler":"최덕진"}
+{"query":"위암 진단코드가 보장 목록에 있는지 확인해주세요","intent":"coverage","source":"병명→코드 계층","labeler":"최덕진"}
+{"query":"슬기로운 간편실속에 질병중환자실입원일당이 들어있나요?","intent":"catalog","source":"KB_SEULGI 특약명 실재","labeler":"최덕진"}
+{"query":"골든라이프에 급성심근경색증진단비가 포함돼 있어요?","intent":"catalog","source":"KB 특약명 실재","labeler":"최덕진"}
+{"query":"이 상품 특약 목록에 상해입원일당이 있나요?","intent":"catalog","source":"KB_SEULGI 특약명 실재","labeler":"최덕진"}
+{"query":"중등도이상욕창진단비를 보장하는 담보가 편성돼 있나요?","intent":"catalog","source":"payout_rule.coverage 실재","labeler":"최덕진"}
+{"query":"슬기로운 간편실속 암수술비는 계약일로부터 몇 일 뒤부터 효력이 있나요?","intent":"waiting","source":"product.waiting_period_days=90 실재","labeler":"최덕진"}
+{"query":"가입 초기에 진단받으면 감액되는 기간이 얼마나 되나요?","intent":"waiting","source":"감액기간 축","labeler":"최덕진"}
+{"query":"보장이 온전히 시작되기까지 대기해야 하는 날짜가 있나요?","intent":"waiting","source":"보장개시 축","labeler":"최덕진"}
+{"query":"계약 후 일정 기간은 절반만 나온다던데 그 기간이 언제까지인가요?","intent":"waiting","source":"1년 50% 감액 실재","labeler":"최덕진"}
+{"query":"어떤 상황이면 회사가 보험금 지급을 거절하나요?","intent":"exclusion","source":"면책 사유 축","labeler":"최덕진"}
+{"query":"보상에서 빠지는 손해 항목을 알려주세요","intent":"exclusion","source":"보상하지 않는 손해","labeler":"최덕진"}
+{"query":"지급이 안 되는 케이스를 정리해주실 수 있나요?","intent":"exclusion","source":"면책 사유 축","labeler":"최덕진"}
+{"query":"회사가 책임을 면하는 조건이 뭔가요?","intent":"exclusion","source":"면책 사유 축","labeler":"최덕진"}
+{"query":"뇌졸중의 진단확정은 어떤 절차로 이뤄지나요?","intent":"rag","source":"clause.title '뇌졸중의 정의 및 진단확정' 실재","labeler":"최덕진"}
+{"query":"요양병원이라는 말이 약관에서 무슨 뜻인가요?","intent":"rag","source":"clause.title '\"요양병원\"의 정의' 실재","labeler":"최덕진"}
+{"query":"보험수익자를 나중에 바꿀 수 있나요?","intent":"rag","source":"clause.title '보험수익자의 지정' 실재","labeler":"최덕진"}
+{"query":"예금보험으로 지급이 보장되는지 설명해주세요","intent":"rag","source":"clause.title '예금보험에 의한 지급보장' 실재","labeler":"최덕진"}

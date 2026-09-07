@@ -11,26 +11,30 @@
 툴콜링이 정규식(1.00)을 못 이기면 라우팅 계층에 LLM 을 넣을 이유가 없고, 이기면
 멀티홉 조합까지 열린다. 어느 쪽이든 같은 채점기로 확인한다.
 
-**실측 결과 (2026-09-07, Qwen3-4B-AWQ, n=31)**
+**실측 (2026-09-07, Qwen3-4B-AWQ)** — in-sample 과 held-out 을 나눠 쟀다.
+held-out(`golden_routing_holdout.jsonl`, n=28)은 실제 DB 담보·상품·조제목으로 만들었고
+**어느 라우터의 튜닝에도 쓰지 않았다**.
 
-    방식      정확도   오라우팅률   기권   지연 p50    LLM
-    정규식     1.000*   0.000        —     0ms        0회
-    시맨틱     0.839    **0.000**    5     ~200ms     0회
-    툴콜링     0.871    **0.129**    0     659ms      1회
-    (*정규식은 최종 route 기준 eval_sql_routing 31/31)
+    방식      정확도(in)  정확도(held)  precision*  오라우팅률(held)  기권  지연 p50
+    정규식     1.000**     —             —           —                —     0ms
+    시맨틱     0.839       0.714         **0.952**   **0.036**        7     ~200ms
+    툴콜링     0.871       0.893         0.893       0.107            0     659ms
+    (*precision = 답을 낸 것 중 정답. 기권은 분모 제외 — precision-first 정의 그대로
+     **정규식은 최종 route 기준 eval_sql_routing 31/31)
 
-정확도는 툴콜링이 조금 높지만(0.871 vs 0.839) **오라우팅률이 결정적으로 나쁘다**
-(0.129 vs 0.000). 툴콜링은 기권을 모른다 — 항상 뭔가를 고르고, 틀릴 때 **확신에 차서**
-틀린다. 그게 이 프로젝트가 없애려는 실패 모드다(precision-first).
+**정확도와 precision 이 반대로 간다.** 툴콜링이 정확도는 높지만(0.893 vs 0.714)
+precision 은 낮다(0.893 vs 0.952) — 툴콜링은 **기권을 모르기** 때문이다. 항상 뭔가를
+고르니 맞히는 개수는 늘지만, 틀릴 때 확신에 차서 틀린다.
 
-오라우팅 4건 중 2건이 catalog↔coverage 경계인데("대상포진진단비 담보 있어?",
-"교통상해사망 보장돼?"), **시맨틱 라우터는 같은 자리에서 기권했다.** 이 경계는 의미가
-아니라 **슬롯 타입**(ICD 코드가 있나)으로 갈리므로 `extract_code` 가 결정론으로 처리하는
-게 맞다 — 기권이 정답인 자리에서 툴콜링만 억지로 답한 셈이다.
+CLAUDE.md 게이트("precision ≥ 0.9 를 독립 평가셋에서")로 판정하면:
+    시맨틱 0.952 ✅ 통과 → 메인 경로 투입(SEMANTIC_ROUTE_ENABLED 기본 on)
+    툴콜링 0.893 ❌ 미달 → 라우팅 계층에 넣지 않음
 
-결론: **라우팅 계층에 툴콜링을 넣을 이유가 없다.** 정확도 이득이 거의 없는데 오라우팅과
-지연(659ms · LLM 1회)을 새로 산다. 툴콜링의 값어치는 라우팅이 아니라 **멀티홉 조합**
-(judge_coverage → lookup_waiting → lookup_payout 처럼 if-elif 로 못 짜는 것)에 있다.
+지연까지 보면 더 분명하다 — 툴콜링은 659ms·LLM 1회를 쓰고 precision 은 더 나쁘다.
+**툴콜링의 값어치는 라우팅이 아니라 멀티홉 조합**(eval_multihop.py)에 있다.
+
+held-out 오라우팅 3건도 성격이 드러난다 — catalog↔coverage("급성심근경색증진단비가
+포함돼 있어요?"), waiting↔terms, rag↔coverage. 앞의 둘은 시맨틱이 **기권한** 경계다.
 
 precision-first 채점(시맨틱과 동일): 툴을 하나도 안 고르면 **기권**(오답 아님).
 기권하면 기존 결정론 흐름이 받으므로 회귀가 아니다. 진짜 손해는 **오라우팅**이다.
@@ -49,6 +53,13 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "data/eval/golden_sql_routing.jsonl"
+
+
+def _golden_path() -> pathlib.Path:
+    """--golden <경로> 로 평가셋 교체. held-out 셋 채점용(train-on-test 분리)."""
+    if "--golden" in sys.argv:
+        return pathlib.Path(sys.argv[sys.argv.index("--golden") + 1])
+    return GOLDEN
 BASE = os.environ.get("LLM_BASE_URL_HOST", "http://localhost:8000/v1")
 MODEL = os.environ.get("LLM_MODEL", "/model")
 
@@ -163,10 +174,10 @@ def _call(query: str, timeout: int = 120) -> tuple[str | None, str]:
 
 def main() -> int:
     show = "--show" in sys.argv
-    rows = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(l) for l in _golden_path().read_text(encoding="utf-8").splitlines() if l.strip()]
     rows = [r for r in rows if r.get("intent")]
     if not rows:
-        print("골든에 intent 축이 없다", file=sys.stderr)
+        print(f"골든에 intent 축이 없다: {_golden_path()}", file=sys.stderr)
         return 2
 
     hit = abstain = wrong = err = 0

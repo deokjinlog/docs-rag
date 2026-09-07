@@ -30,8 +30,15 @@ from src.v1.rag import semantic_router as sr   # noqa: E402
 GOLDEN = pathlib.Path(__file__).resolve().parent.parent / "data/eval/golden_sql_routing.jsonl"
 
 
+def _golden_path() -> pathlib.Path:
+    """--golden <경로> 로 평가셋 교체. held-out 셋 채점용(train-on-test 분리)."""
+    if "--golden" in sys.argv:
+        return pathlib.Path(sys.argv[sys.argv.index("--golden") + 1])
+    return GOLDEN
+
+
 def _rows():
-    return [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [json.loads(l) for l in _golden_path().read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
 def _encoder():
@@ -42,7 +49,7 @@ def _encoder():
 def main() -> int:
     rows = [r for r in _rows() if r.get("intent")]
     if not rows:
-        print(f"골든에 intent 축이 없다: {GOLDEN}", file=sys.stderr)
+        print(f"골든에 intent 축이 없다: {_golden_path()}", file=sys.stderr)
         return 2
     encode = _encoder()
     dist_mode = "--dist" in sys.argv
@@ -102,7 +109,20 @@ def main() -> int:
             ms = sorted(x[1] for x in xs)
             print(f"    {label:<10} n={len(xs):<3} score min={ss[0]:.3f} p50={ss[len(ss)//2]:.3f} "
                   f"max={ss[-1]:.3f} | margin min={ms[0]:.3f} p50={ms[len(ms)//2]:.3f}")
-    # 오라우팅이 0이면 통과. 기권은 회귀가 아니다(기존 흐름이 받음).
+    # ── 회귀 판정 ────────────────────────────────────────────────────────────
+    # 게이트는 **오라우팅률**이다. 기권은 회귀가 아니고(기존 흐름이 받음), 정확도는
+    # 기권이 늘면 같이 떨어져서 게이트로 쓰면 "안전해질수록 실패"가 된다.
+    # baseline 이 있으면 그것과 대조, 없으면 오라우팅 0 을 요구한다.
+    base = pathlib.Path(__file__).resolve().parent.parent / "data/eval/routing_semantic_baseline.json"
+    rate = wrong / n
+    if base.exists() and "--golden" in sys.argv:
+        b = json.loads(base.read_text(encoding="utf-8"))
+        if pathlib.Path(b.get("golden", "")).name == _golden_path().name:
+            lim = float(b["misroute_rate"])
+            ok = rate <= lim + 1e-9
+            print(f"  {'✅ 무회귀' if ok else '❌ 회귀'} — 오라우팅률 {rate:.3f} "
+                  f"vs baseline {lim:.3f} ({b['measured']} 측정, precision {b['precision']})")
+            return 0 if ok else 1
     return 0 if wrong == 0 else 1
 
 

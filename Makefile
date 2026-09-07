@@ -44,6 +44,9 @@ check: ## 관계형 추출 자립 골든 9종 + 전처리 게이트 (배포 관�
 eval-semantic-route: ## 시맨틱 라우터 의도 분류 채점 (임베딩 모델 필요, API·DB 불필요)
 	docker compose exec -T api python scripts/eval_semantic_route.py
 
+eval-semantic-holdout: ## 시맨틱 라우터 held-out 회귀 게이트 (baseline 오라우팅률 대조)
+	docker compose exec -T api python scripts/eval_semantic_route.py --golden data/eval/golden_routing_holdout.jsonl
+
 eval-tool-route: ## 툴콜링 라우팅 채점 (vLLM 에 --enable-auto-tool-choice 필요)
 	python3 scripts/eval_tool_routing.py
 

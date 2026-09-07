@@ -1,0 +1,10 @@
+{
+  "measured": "2026-09-07",
+  "golden": "data/eval/golden_routing_holdout.jsonl",
+  "n": 28,
+  "accuracy": 0.714,
+  "precision": 0.952,
+  "misroute_rate": 0.036,
+  "abstain": 7,
+  "note": "held-out(실제 DB 엔티티 기반, ROUTE_EXAMPLES 튜닝에 안 쓴 질의). 게이트는 misroute_rate — 기권은 회귀가 아니다(기존 흐름이 받음). 정확도는 참고치"
+}
