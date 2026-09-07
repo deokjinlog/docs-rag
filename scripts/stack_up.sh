@@ -40,10 +40,12 @@ HAS_LLM=0
 #
 # vllm 을 **먼저** 띄우는 게 맞다 — 서빙까지 2분 38초 걸리므로 일찍 시작할수록 빨리
 # 준비된다. 앱은 수 초면 뜨고 vLLM 없이도 SQL·검색·거절 경로가 다 동작하니 기다릴 이유가
-# 없다. 즉 "vllm 이 먼저 뜨는 것"은 문제가 아니었고, 문제는 compose 의 **hard 의존**이었다
-# (vllm 생성 실패 → up 전체 중단 → api·celery 가 Created 로 방치).
-# 그건 docker-compose.yml 의 `vllm: required: false` 로 근본 해결했다.
-# 모델이 없으면 여기서 아예 건너뛴다 — 재시작 루프로 CPU 를 태우지 않기 위해.
+# 없다. 즉 "vllm 이 먼저 뜨는 것"은 문제가 아니었고, 문제는 compose 의 hard 의존이었다
+# (vllm 시작 실패 → up 전체 중단 → api·celery 가 Created 로 방치).
+#
+# 그래서 docker-compose.yml 의 api·celery depends_on 에서 **vllm 을 뺐다**. 대신 기동
+# 순서를 잡는 책임이 이 스크립트로 왔다 — 여기서 명시적으로 vllm 을 앱보다 먼저 띄운다.
+# 모델이 없으면 건너뛴다(재시작 루프로 CPU 를 태우지 않기 위해).
 echo "▶ 스택 기동"
 docker compose up -d postgres qdrant rabbitmq odl paddle >/dev/null 2>&1
 [ "$HAS_LLM" = 1 ] && docker compose up -d vllm >/dev/null 2>&1

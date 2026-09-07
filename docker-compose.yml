@@ -132,18 +132,24 @@ services:
       - ./tests:/app/tests   # docker exec uv run pytest용 — host 변경 즉시 반영 (conftest.py 포함)
       - ./scripts:/app/scripts   # docker exec uv run python scripts/… 용 (색인·평가; BGE-M3가 컨테이너에만 있음)
     # 임베더·리랭커는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일, GPU는 vLLM 전용)
-    # vllm 만 **soft 의존**(required:false) — "가능하면 먼저 띄우되, 실패해도 나는 뜬다".
+    # ⚠ **vllm 은 여기 넣지 않는다.** LLM 은 요청 시점 HTTP 호출이라 기동 의존이 아니다.
     #
-    # 왜 hard 의존이면 안 되나 (실측 2026-09-07):
-    #  ① 이득이 0 — depends_on 은 *컨테이너 시작 순서*만 보장하고 *준비 완료*는 보장하지
+    # 왜 뺐나 (실측 2026-09-07) —
+    #  ① 이득이 0: depends_on 은 *컨테이너 시작 순서*만 보장하고 *준비 완료*는 보장하지
     #     않는다. vLLM 은 시작 후 서빙까지 **2분 38초**(weights 10.9s + init engine 75.9s).
-    #     api 는 수 초 만에 뜨므로 어차피 vLLM 준비 한참 전에 요청을 받는다.
-    #  ② 비용은 연쇄 붕괴 — vllm 생성이 실패하면(모델 없음·bind 마운트 캐시 무효화)
-    #     `docker compose up -d` 가 거기서 중단돼 api·celery·flower 가 Created 로 멈춘다.
-    #     실제로 그렇게 스택 전체가 죽어 있었다.
-    #  ③ api 는 vLLM 없이도 유효하다 — LLM 은 요청 시점 HTTP 호출이라 SQL 결정론 경로·
-    #     /retrieve·거절 게이트는 전부 정상 동작한다(세션 내내 실증). 생성만 실패하는 게
-    #     맞는 열화지, 스택이 안 뜨는 건 과잉 결합이다.
+    #     api 는 수 초 만에 뜨므로 순서를 지켜도 vLLM 준비 한참 전에 요청을 받는다.
+    #  ② 비용은 연쇄 붕괴: vllm **시작**이 실패하면(모델 없음 · Docker Desktop 의 WSL
+    #     bind 마운트 캐시 무효화 → "failed to create task ... error mounting") compose 가
+    #     거기서 중단돼 api·celery·flower 가 Created 로 방치된다. 실제로 그렇게 스택이 죽었다.
+    #  ③ api 는 vLLM 없이도 유효하다: SQL 결정론 경로·/retrieve·거절 게이트가 전부 정상
+    #     동작한다(세션 내내 실증). "생성만 실패"가 맞는 열화지 "스택이 안 뜸"은 과잉 결합.
+    #
+    # `vllm: {required: false}` 로도 시도했으나 **효과 없었다** — 같은 고장을 재현해 3방식을
+    # 나란히 측정한 결과:
+    #     required:true   → api: created ❌      required:false → api: created ❌
+    #     depends_on 제거 → api: running ✅
+    # required:false 는 "의존 서비스가 compose 파일에 없어도 됨"에 가깝지, "시작 실패를
+    # 무시함"이 아니다. 기동 순서는 scripts/stack_up.sh 가 명시적으로 잡는다.
     depends_on:
       postgres:
         condition: service_started
@@ -153,9 +159,7 @@ services:
         condition: service_started
       odl:
         condition: service_started
-      vllm:
-        condition: service_started
-        required: false
+
     restart: unless-stopped
 
   celery:
@@ -173,18 +177,24 @@ services:
       - ./data:/app/data
       - ./model:/app/model
     # 임베더는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일)
-    # vllm 만 **soft 의존**(required:false) — "가능하면 먼저 띄우되, 실패해도 나는 뜬다".
+    # ⚠ **vllm 은 여기 넣지 않는다.** LLM 은 요청 시점 HTTP 호출이라 기동 의존이 아니다.
     #
-    # 왜 hard 의존이면 안 되나 (실측 2026-09-07):
-    #  ① 이득이 0 — depends_on 은 *컨테이너 시작 순서*만 보장하고 *준비 완료*는 보장하지
+    # 왜 뺐나 (실측 2026-09-07) —
+    #  ① 이득이 0: depends_on 은 *컨테이너 시작 순서*만 보장하고 *준비 완료*는 보장하지
     #     않는다. vLLM 은 시작 후 서빙까지 **2분 38초**(weights 10.9s + init engine 75.9s).
-    #     api 는 수 초 만에 뜨므로 어차피 vLLM 준비 한참 전에 요청을 받는다.
-    #  ② 비용은 연쇄 붕괴 — vllm 생성이 실패하면(모델 없음·bind 마운트 캐시 무효화)
-    #     `docker compose up -d` 가 거기서 중단돼 api·celery·flower 가 Created 로 멈춘다.
-    #     실제로 그렇게 스택 전체가 죽어 있었다.
-    #  ③ api 는 vLLM 없이도 유효하다 — LLM 은 요청 시점 HTTP 호출이라 SQL 결정론 경로·
-    #     /retrieve·거절 게이트는 전부 정상 동작한다(세션 내내 실증). 생성만 실패하는 게
-    #     맞는 열화지, 스택이 안 뜨는 건 과잉 결합이다.
+    #     api 는 수 초 만에 뜨므로 순서를 지켜도 vLLM 준비 한참 전에 요청을 받는다.
+    #  ② 비용은 연쇄 붕괴: vllm **시작**이 실패하면(모델 없음 · Docker Desktop 의 WSL
+    #     bind 마운트 캐시 무효화 → "failed to create task ... error mounting") compose 가
+    #     거기서 중단돼 api·celery·flower 가 Created 로 방치된다. 실제로 그렇게 스택이 죽었다.
+    #  ③ api 는 vLLM 없이도 유효하다: SQL 결정론 경로·/retrieve·거절 게이트가 전부 정상
+    #     동작한다(세션 내내 실증). "생성만 실패"가 맞는 열화지 "스택이 안 뜸"은 과잉 결합.
+    #
+    # `vllm: {required: false}` 로도 시도했으나 **효과 없었다** — 같은 고장을 재현해 3방식을
+    # 나란히 측정한 결과:
+    #     required:true   → api: created ❌      required:false → api: created ❌
+    #     depends_on 제거 → api: running ✅
+    # required:false 는 "의존 서비스가 compose 파일에 없어도 됨"에 가깝지, "시작 실패를
+    # 무시함"이 아니다. 기동 순서는 scripts/stack_up.sh 가 명시적으로 잡는다.
     depends_on:
       postgres:
         condition: service_started
@@ -194,9 +204,7 @@ services:
         condition: service_started
       odl:
         condition: service_started
-      vllm:
-        condition: service_started
-        required: false
+
     restart: unless-stopped
 
   flower:
