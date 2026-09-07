@@ -44,6 +44,9 @@ check: ## 관계형 추출 자립 골든 9종 + 전처리 게이트 (배포 관�
 eval-semantic-route: ## 시맨틱 라우터 의도 분류 채점 (임베딩 모델 필요, API·DB 불필요)
 	docker compose exec -T api python scripts/eval_semantic_route.py
 
+eval-tool-route: ## 툴콜링 라우팅 채점 (vLLM 에 --enable-auto-tool-choice 필요)
+	python3 scripts/eval_tool_routing.py
+
 up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 compose up 대신 이걸 쓴다
 	bash scripts/stack_up.sh
 
