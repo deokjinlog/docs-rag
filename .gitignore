@@ -1,30 +1,26 @@
-# 대용량 파일 (모델 가중치, 데이터)
-model/
-data/
-logs/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-*.egg-info/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
 
 # Claude Code (개인 설정)
-.claude/
-
 # GSD
-.planning/
-
+# IDE
+# OS
+# Python
+# 대용량 파일 (모델 가중치, 데이터)
 # 환경변수 (실제 자격증명 — 절대 커밋 금지)
+*.egg-info/
+*.pyc
+*.pyo
+.DS_Store
+.claude/
 .env
-.env.local
 .env.*.local
+.env.local
+.idea/
+.orca/
+.planning/
+.venv/
+.vscode/
+Thumbs.db
+__pycache__/
+data/
+logs/
+model/

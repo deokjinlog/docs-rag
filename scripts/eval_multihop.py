@@ -8,45 +8,46 @@
 `/coverage`·`/payout` 등이 진짜 DB 를 읽고, 그 결과를 모델에 돌려줘 다음 홉을 결정하게 한다.
 그래서 이 채점은 "모델이 툴 이름을 잘 고르나"가 아니라 **"실제 데이터로 답까지 엮나"** 를 잰다.
 
-채점 3축 —
+채점 4축 —
   ① 툴 recall    required_tools ⊆ 실제 호출한 툴          (필요한 홉을 다 밟았나)
   ② 금지툴 위반  forbidden_tools ∩ 호출한 툴 = ∅          (부르면 안 되는 걸 불렀나)
   ③ 요소 recall  required_elements 가 최종 답에 다 있나    (완결성 — golden_completeness 와 같은 축)
+  ④ **금지문구**  must_not_contain 이 답에 없나            (있으면 안 되는 말을 했나)
+
+④가 이 도메인의 진짜 안전장치다. ③(요소 recall)은 "빠뜨렸나"만 보는데, 실제 사고는
+**뒤집어 말하는 것**이었다 — 결정론이 "미보장"을 냈는데 답이 "보장됩니다"가 되면 필수
+요소는 다 들어 있어도 소비자는 정반대 정보를 받는다. 금액도 같다: 갑상선암진단자금(10%)
+질의에 "50%"(암진단자금)가 섞이면 5배 오답이다. ③으로는 둘 다 못 잡는다.
 
 ②가 특히 중요하다. 이 도메인의 사고는 "못 찾음"이 아니라 **"없는 걸 있다고 답함"** 이다:
 미보장이 확정인데 지급률을 붙이거나(모순), 없는 담보에 금액을 붙이거나(환각).
 그래서 금지툴은 오답보다 무겁게 본다.
 
-**측정 (2026-09-07, Qwen3-4B-AWQ, n=8)** — 최종 합성만 바꾼 A/B:
+**측정 (2026-09-08, Qwen3-4B-AWQ, n=12)** — 최종 합성만 바꾼 A/B:
 
-    최종 합성        툴 recall   요소 recall   금지툴 위반
-    결정론 조립       0.88        **1.00**      0
-    LLM 재서술        0.88        **0.62**      0
+    최종 합성        툴 recall   요소 recall   금지문구   금지툴 위반
+    결정론 조립       1.00        **0.92**      0.92       0
+    LLM 재서술        1.00        **0.67**      0.92       0
 
-**툴 recall 이 동일**하다는 게 핵심이다 — 에이전트가 밟은 홉도, 손에 쥔 사실도 같다.
-유일한 변수는 **누가 답 문장을 쓰느냐**이고, 거기서 38%가 날아간다. LLM 이 잃은 3건:
+**툴 recall 이 같다**는 게 핵심이다 — 에이전트가 밟은 홉도, 손에 쥔 사실도 같은데
+답 문장을 LLM 이 쓰면 요소의 4분의 1이 더 날아간다. 역할 분담이 숫자로 정해진다:
+**에이전트는 "어느 툴을 어떤 순서로"까지, 답 문장은 결정론 템플릿.**
+새 원칙이 아니라 eval-and-golden §8 이 format_answer 를 결정론 템플릿으로 둔 이유의 실증.
 
-    MH02  "제자리암진단자금" 이름 누락
-    MH04  결정론 "C73 → 미보장(암진단비) → 실제 담보: 갑상선암"
-          → LLM "갑상선암(C73)은 보장됩니다"                    ← 판정을 뒤집음
-    MH08  결정론 "Z99 → 판정불가" → LLM 이 '기타 만성질환'이라 창작
+**남은 실패 2건은 둘 다 모델의 인자 채우기 실패**다(골든이 맞고 모델이 틀렸다):
+    MH12  product 에 담보명을, coverage 에 "수술급여금"(소득보장 누락)을 넣어 미매칭
+    MH02  질의에 없는 "중환자실입원급여금" 을 coverage 로 **지어내** 무관한 담보 값이 섞임
+          → 금지문구 축이 이걸 잡는다. 툴 recall 은 required ⊆ called 이라 **여분 호출**을
+            못 잡는데, 금지문구가 그 구멍을 메운다.
 
-MH04 가 특히 무겁다 — 같은 세션에서 /coverage 의 교차회사 오염을 고쳐 결정론이 정답을
-내게 만들었는데 **LLM 이 그 정답을 읽고 뒤집었다.** 소비자한테 직접 손해다.
-
-→ **역할 분담이 숫자로 정해졌다.** 에이전트는 "어느 툴을 어떤 순서로"(0.88, 위반 0)까지,
-  답 문장은 결정론 템플릿이 짠다. 새 원칙이 아니라 eval-and-golden §8 이 format_answer 를
-  결정론 템플릿으로 둔 이유의 실증이다. eval_tool_routing(1홉 선택)은 이 위험을 못 봤다 —
-  멀티홉이라야 드러난다.
-
-**부수로 잡힌 것들** (골든이 채점기·스키마의 결함도 같이 검출했다):
-  · 디스패처가 슬롯을 이어붙여 질의를 만들면 **담보 특정성이 뒤집힌다**. code 와 disease 를
-    같이 넣거나 원 시나리오를 덧붙이면 extract_coverage 가 엉뚱한 걸 담보로 잡는다
-    → 툴마다 정해진 문형으로 합성, code 있으면 disease 제외, 시나리오 덧붙이기 금지.
-  · judge_coverage 스키마에 **product 가 없어** 브랜드 스코프가 안 걸렸다 → 추가.
-  · period_bucket 이 자유 문자열이라 모델이 "2년이상"(없는 구간)을 만들었다 → enum 고정.
-  이 셋을 고치자 요소 recall 0.38 → 0.62 → 0.88 → 1.00 으로 올랐다. 즉 **초기 0.38 중
-  상당 부분은 모델이 아니라 배선 결함**이었다 — 골든 없이는 구분이 안 됐을 것이다.
+**채점기도 두 번 고쳤다 — 골든이 자기 채점기의 결함도 드러냈다:**
+  ① 요소를 substring 정확 일치로만 보면 **표현 차이가 사실 오류로 오분류**된다. 실측:
+     "암진단비가 보장되지 않습니다" 는 판정이 정확히 맞는데 '미보장' 단어가 없어 실패로
+     셌다. → 요소 항목이 리스트면 **any-of(동의 표현)**. 이걸 넣자 결정론 0.92 로 올랐다.
+     그 전 0.42 는 LLM 의 어휘 취향을 재고 있었다.
+  ② 금지문구는 **그 답에서만 틀린 신호**여야 한다. "50%" 를 금지했다가 중환자실 감액
+     문구("1년이내 재해외 시 50% 감액")에 걸려 오탐했다. 숫자처럼 다의적인 토큰은
+     부적합 → "중환자실"(무관한 담보 혼입) 로 교정.
 
 전제: 스택 기동(make up) + vLLM 에 `--enable-auto-tool-choice --tool-call-parser hermes`.
 
@@ -146,6 +147,17 @@ def _dispatch(name: str, args: dict, scenario: str) -> str:
     return str(d.get("answer"))
 
 
+def _has_elem(answer: str, elem) -> bool:
+    """요소 충족 판정. 리스트면 any-of(동의 표현), 문자열이면 그대로 포함 검사."""
+    if isinstance(elem, (list, tuple)):
+        return any(v in answer for v in elem)
+    return elem in answer
+
+
+def _elem_label(elem) -> str:
+    return elem if isinstance(elem, str) else f"{elem[0]}(등 {len(elem)}표현)"
+
+
 def _chat(messages: list, timeout: int = 180) -> dict:
     body = {"model": MODEL, "messages": messages, "tools": TOOLS, "tool_choice": "auto",
             "temperature": 0, "max_tokens": 768,
@@ -214,8 +226,8 @@ def main() -> int:
     synth = "deterministic" if "--deterministic" in sys.argv else "llm"
     print(f"  최종 합성: {synth}")
     rows = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
-    tool_ok = elem_ok = 0
-    violations, tool_miss, elem_miss = [], [], []
+    tool_ok = elem_ok = clean_ok = 0
+    violations, tool_miss, elem_miss, said_forbidden = [], [], [], []
 
     for r in rows:
         print(f"\n  [{r['id']}] {r['scenario'][:52]}   ({r['pattern']})")
@@ -234,27 +246,44 @@ def main() -> int:
             tool_miss.append((r["id"], ", ".join(sorted(missing))))
         if forbid:
             violations.append((r["id"], ", ".join(sorted(forbid))))
-        lack = [e for e in r["required_elements"] if e not in answer]
+        # 요소는 **동의 표현 any-of** 를 허용한다. 항목이 리스트면 그 중 하나만 있으면 통과.
+        #
+        # 왜 — substring 정확 일치로만 보면 "표현 차이"가 "사실 오류"로 오분류된다.
+        # 실측: MH04 답 "암진단비가 보장되지 않습니다" 는 판정이 **정확히 맞는데**
+        # '미보장' 이라는 단어를 안 써서 실패로 셌다. MH08 "별표3 범위 밖 … 확인이 필요"
+        # 도 의미상 판정불가인데 실패. 이러면 요소 recall 이 LLM 의 어휘 취향을 재는 꼴이
+        # 되고, 진짜 위험(MH02 가 암진단자금 50% 를 섞은 것)이 같은 숫자에 묻힌다.
+        # eval-and-golden §4 "자유서술은 정확 일치가 아니라 정규화/동의 처리" 그대로.
+        lack = [_elem_label(e) for e in r["required_elements"] if not _has_elem(answer, e)]
         if not lack:
             elem_ok += 1
         else:
             elem_miss.append((r["id"], ", ".join(lack)))
+        # ④ 있으면 안 되는 말 — 뒤집어 말하기·다른 담보 금액 혼입을 잡는다
+        said = [e for e in r.get("must_not_contain", []) if e in answer]
+        if not said:
+            clean_ok += 1
+        else:
+            said_forbidden.append((r["id"], ", ".join(said)))
         print(f"      호출: {' → '.join(called) or '(없음)'}")
         print(f"      답  : {answer[:110].replace(chr(10), ' ')}")
         print(f"      툴{'✅' if not missing else '❌'} "
               f"요소{'✅' if not lack else '❌'} "
+              f"금지문구{'✅' if not said else '❌'} "
               f"{'🚫금지툴 ' + ','.join(sorted(forbid)) if forbid else ''}")
 
     n = len(rows)
     print("\n" + "─" * 78)
     print(f"  n={n}   툴 recall {tool_ok}/{n} = {tool_ok / n:.2f}   "
           f"요소 recall {elem_ok}/{n} = {elem_ok / n:.2f}   "
+          f"금지문구 {clean_ok}/{n} = {clean_ok / n:.2f}   "
           f"금지툴 위반 {len(violations)}건")
-    for label, items in (("툴 누락", tool_miss), ("요소 누락", elem_miss), ("🚫 금지툴", violations)):
+    for label, items in (("툴 누락", tool_miss), ("요소 누락", elem_miss),
+                         ("🚫 금지문구", said_forbidden), ("🚫 금지툴", violations)):
         if items:
             print(f"  {label}: " + " / ".join(f"{i}({d})" for i, d in items))
-    # 금지툴 위반은 "없는 걸 있다고 답함" — 오답보다 무겁게 본다
-    return 1 if violations else 0
+    # 금지툴·금지문구 위반은 "없는 걸 있다고 답함" / "뒤집어 말함" — 오답보다 무겁게 본다
+    return 1 if (violations or said_forbidden) else 0
 
 
 if __name__ == "__main__":

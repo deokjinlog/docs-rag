@@ -16,7 +16,24 @@ from __future__ import annotations
 import re
 
 # 담보 키워드 — 질의어 ↔ payout_rule.coverage 매칭용
-_COVERAGE_KEYWORDS = ["중환자실", "레진", "아말감", "인레이", "제자리암", "암진단자금", "소득보장"]
+# 담보 키워드. **서로 포함관계인 것들이 섞여 있다** — "암진단자금" ⊂ "갑상선암진단자금".
+# 그래서 매칭은 반드시 **가장 긴 것 우선**이어야 한다(extract_payout_intent 참조).
+# 실측 사고(2026-09-07): 목록에 갑상선암·기타피부암이 없고 "암진단자금"이 먼저 걸려
+# "갑상선암진단자금 90일이하 얼마?" 가 **암진단자금의 50%**를 답했다. 정답은 10% — 5배 오답.
+# 소비자가 자기 담보 아닌 지급률을 받는다.
+# 매칭은 길이 내림차순이라, **전체 담보명을 넣어야** 수식어가 이긴다.
+# 수식어만 넣으면 안 된다 — "갑상선암"(4자) < "암진단자금"(5자) 이라 길이로 져서
+# 여전히 암진단자금이 잡힌다(실측). "제자리암"도 같은 이유로 깨졌었다.
+# 전체 담보명(갑상선암진단자금 8자)을 넣으면 "암진단자금"(5자)을 확실히 이긴다.
+# 짧은 수식어도 같이 두는 건 "갑상선암 얼마?" 처럼 줄여 묻는 경우를 받기 위해서다.
+_COVERAGE_KEYWORDS = [
+    # 전체 담보명 — 포함관계에서 이겨야 하므로 반드시 여기 있어야 한다
+    "경계성종양진단자금", "기타피부암진단자금", "갑상선암진단자금", "제자리암진단자금",
+    "암진단자금",
+    # 줄여 묻는 형태
+    "경계성종양", "기타피부암", "갑상선암", "제자리암",
+    "중환자실", "소득보장", "아말감", "인레이", "레진",
+]
 
 # /answer 자동 라우팅 게이트 — "얼마/지급률"처럼 결정론 지급값을 묻는 질의만 SQL로.
 # precision-first: 담보만 언급하고 '언제 지급(지급사유)·정의·방법'을 묻는 해석 질의는 RAG 소관
@@ -42,7 +59,10 @@ _HARD_FILTER_KEYS = ("cause", "age_band", "period_bucket")
 def extract_payout_intent(query: str) -> dict:
     """질의에서 (담보·원인·연령·경과기간) 의도 추출 — 규칙 기반, LLM 없음."""
     intent: dict = {}
-    for kw in _COVERAGE_KEYWORDS:
+    # **가장 긴 매칭 우선.** 짧은 걸 먼저 잡으면 더 구체적인 담보를 놓친다 —
+    # "갑상선암진단자금"에서 "암진단자금"이 먼저 걸리면 5배 틀린 지급률이 나간다(위 주석).
+    # 목록 순서에 의존하지 않도록 길이로 정렬해 순서 실수에 강하게 만든다.
+    for kw in sorted(_COVERAGE_KEYWORDS, key=len, reverse=True):
         if kw in query:
             intent["coverage"] = kw
             break
@@ -79,8 +99,13 @@ def select_payout(rows: list[dict], query: str) -> dict | None:
         return None
     # rate_pct=NULL 행은 기저 지급률이 없는 KB 감액전용 행(면책기간·감액만) — "얼마?"의 결정론
     # 답이 될 수 없으므로(기저는 가입금액 상대) payout 후보에서 제외. KB 감액은 waiting 경로 소관.
-    cands = [r for r in rows
-             if intent["coverage"] in (r.get("coverage") or "") and r.get("rate_pct") is not None]
+    _cov = intent["coverage"]
+    _live = [r for r in rows if r.get("rate_pct") is not None]
+    # **정확 일치 우선, 부분일치는 폴백.** 담보명이 서로 포함관계일 때(암진단자금 ⊂
+    # 갑상선암진단자금) 부분일치만 쓰면 한 질의가 두 담보의 행을 다 후보로 삼아 엉뚱한
+    # 지급률을 고른다. intent 가 정확히 가리키는 담보가 있으면 그것만 본다.
+    _exact = [r for r in _live if _cov == (r.get("coverage") or "").strip()]
+    cands = _exact or [r for r in _live if _cov in (r.get("coverage") or "")]
     hits = []
     for r in cands:
         skip = False
