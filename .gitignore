@@ -22,5 +22,6 @@
 Thumbs.db
 __pycache__/
 data/
+data/eval/scanset/
 logs/
 model/

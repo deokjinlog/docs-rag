@@ -23,7 +23,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
-COL_GAP = 60          # x0 갭이 이보다 크면 단 경계(px). reconstruct_reading_order 와 같은 값
+# 단 경계로 볼 x0 갭(절대값, PDF 포인트). reconstruct_reading_order 와 같은 값.
+#
+# ⚠ **좌표계를 통일하는 책임은 어댑터에 있다.** 갭을 "페이지 폭 비율"로 바꿔봤더니
+# ODL 결과가 전부 소폭 악화했다(0.6691→0.6669 등) — 블록 extent 로 폭을 추정하는 게
+# 페이지마다 흔들리기 때문이다. 갭은 고정하고, **OCR/VL bbox 를 PDF 포인트로 스케일**해서
+# 넣는 게 맞다(from_ocr 의 target_width).
+COL_GAP = 60
+PAGE_WIDTH_PT = 595.0   # A4 폭. 픽셀 좌표를 여기에 맞춘다
 
 BlockType = Literal["heading", "text", "table", "figure", "caption"]
 Source = Literal["odl", "ocr", "vl"]
@@ -105,7 +112,7 @@ def _odl_type(t: str | None) -> BlockType:
     return "text"
 
 
-def from_ocr(res: dict, page: int = 0) -> list[Block]:
+def from_ocr(res: dict, page: int = 0, image_width: float | None = None) -> list[Block]:
     """PP-StructureV3 결과 → Block.
 
     `overall_ocr_res` 의 `rec_texts` / `rec_scores` / `dt_polys` 를 줄 단위로 편다.
@@ -113,6 +120,10 @@ def from_ocr(res: dict, page: int = 0) -> list[Block]:
     (실측: 잘린 글자 '움' 이 0.117 로 잡혔고 정상 줄은 0.95+ 였다).
     """
     o = (res or {}).get("overall_ocr_res") or {}
+    # 픽셀 → PDF 포인트 스케일. OCR bbox 는 이미지 좌표(200dpi 면 폭 ~1654)라 그대로 두면
+    # COL_GAP(60pt) 이 폭의 3.6% 밖에 안 돼 단이 과하게 쪼개진다(실측: 2단인데 경계 7개).
+    # image_width 를 주면 A4 폭에 맞춰 정규화한다.
+    scale = (PAGE_WIDTH_PT / image_width) if image_width else 1.0
     texts = o.get("rec_texts") or []
     scores = o.get("rec_scores") or []
     polys = o.get("dt_polys") or o.get("rec_polys") or []
@@ -121,6 +132,8 @@ def from_ocr(res: dict, page: int = 0) -> list[Block]:
         if not (t or "").strip():
             continue
         bb = _poly_to_bbox(polys[i]) if i < len(polys) else (0.0, 0.0, 0.0, 0.0)
+        if scale != 1.0:
+            bb = tuple(v * scale for v in bb)
         out.append(Block(page=page, bbox=bb, text=t, source="ocr",
                          confidence=float(scores[i]) if i < len(scores) else None))
     return out
