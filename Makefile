@@ -56,6 +56,9 @@ eval-multihop: ## 멀티홉(에이전트) 골든 — 툴 recall·금지툴·요�
 compare-parsers: ## 파서 비교 (ODL vs PaddleOCR-VL) — MD_A/MD_B 로 마크다운 두 개를 준다
 	python3 scripts/compare_parsers.py --md-a "$(MD_A)" --md-b "$(MD_B)"
 
+triage: ## 페이지 분류 분포 (캐스케이드 M1) — 어느 경로로 갈 페이지가 몇 %인가
+	uv run --no-project --with pymupdf python scripts/triage_pages.py --all
+
 up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 compose up 대신 이걸 쓴다
 	bash scripts/stack_up.sh
 
