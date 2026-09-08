@@ -34,8 +34,13 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
 
 ```bash
 # 빌드 & 기동
-docker compose build && docker compose up -d
+make up                                         # ★ 평소엔 이것 — 기동 + 마운트 검증 + 자가복구
+docker compose build && docker compose up -d    # 이미지 재빌드가 필요할 때
 docker compose up -d                            # .env 변경 시 (재빌드 불필요)
+
+# ⚠ 재부팅 후엔 반드시 `make up`. WSL2 + Docker Desktop 은 bind 마운트 캐시가 무효화돼
+# **컨테이너는 running 인데 /data 가 빈 디렉토리**가 되는 조용한 실패가 재현된다.
+# 원인·대책 전문: docs/troubleshooting-boot.md (부팅 시 systemd 유닛으로 자동 실행됨)
 
 # 로그
 docker compose logs -f api celery               # 파이프라인 + API 실시간

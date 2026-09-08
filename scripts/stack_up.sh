@@ -33,6 +33,19 @@ fail=0
 
 say() { printf "  %-28s %s\n" "$1" "$2"; }
 
+# ── docker 준비 대기 ──────────────────────────────────────────────────────────
+# Docker Desktop 은 **Windows 쪽 프로세스**라 WSL 부팅보다 늦게 준비된다. 부팅 직후
+# 자동 실행되는 경우(systemd 유닛) 여기서 기다리지 않으면 "daemon 없음"으로 헛돈다.
+WAIT=${DOCKER_WAIT_SEC:-120}
+for _ in $(seq 1 "$WAIT"); do
+  docker info >/dev/null 2>&1 && break
+  sleep 1
+done
+if ! docker info >/dev/null 2>&1; then
+  echo "${RED}❌ docker 데몬 응답 없음 (${WAIT}s 대기). Docker Desktop 이 떠 있는지 확인${NC}"
+  exit 1
+fi
+
 HAS_LLM=0
 [ -s model/Qwen3-4B-AWQ/config.json ] && HAS_LLM=1
 
@@ -79,22 +92,51 @@ echo "▶ /data 마운트 검증 (호스트 대조)"
 host_n=$(ls data/output/raw/*.md 2>/dev/null | wc -l | tr -d ' ')
 say "host data/output/raw" "${host_n}개"
 
-check_mount() {  # $1=서비스 $2=컨테이너내경로
-  local svc=$1 path=$2 n
-  [ "$(docker compose ps "$svc" --format '{{.State}}' 2>/dev/null)" = "running" ] || return 0
-  n=$(docker compose exec -T "$svc" sh -c "ls $path/output/raw/*.md 2>/dev/null | wc -l" 2>/dev/null | tr -d ' \r')
-  if [ "${n:-0}" = "$host_n" ]; then
-    say "$svc:$path" "${GRN}${n}개 ✓${NC}"
-  else
-    say "$svc:$path" "${RED}${n:-?}개 ✗ (호스트 ${host_n}개와 불일치)${NC}"
-    echo "     └ 복구: docker compose up -d --force-recreate $svc"
-    fail=1
-  fi
+# 마운트가 깨졌으면 **직접 고친다**. 복구법은 이미 안다(--force-recreate) — 사람에게
+# 명령을 안내만 하면 매 재부팅마다 사람이 개입해야 하고, 안 보면 조용히 깨진 채 돈다.
+mount_count() {  # $1=서비스 $2=컨테이너내경로 → 보이는 문서 수
+  # 검증용 훅: STACK_UP_FORCE_BROKEN 에 든 서비스는 0 을 돌려 자가복구 경로를 태운다.
+  case " ${STACK_UP_FORCE_BROKEN:-} " in *" $1 "*) echo 0; return;; esac
+  docker compose exec -T "$1" sh -c "ls $2/output/raw/*.md 2>/dev/null | wc -l" 2>/dev/null | tr -d ' \r'
 }
-check_mount odl    /data
-check_mount paddle /data
-check_mount api    /app/data
-check_mount celery /app/data
+
+# 깨진 서비스는 전역 BROKEN 에 담는다.
+# ⚠ 함수 stdout 으로 반환하면 안 된다 — say() 진단 출력이 같은 stdout 이라 섞여서
+# 결과가 항상 non-empty 가 된다(실측 버그). 진단은 사람이 봐야 하므로 stdout 이 맞고,
+# 반환값은 전역으로 뺀다.
+BROKEN=""
+check_mounts() {
+  BROKEN=""
+  for pair in "odl:/data" "paddle:/data" "api:/app/data" "celery:/app/data"; do
+    local svc=${pair%%:*} path=${pair#*:}
+    [ "$(docker compose ps "$svc" --format '{{.State}}' 2>/dev/null)" = "running" ] || continue
+    local n; n=$(mount_count "$svc" "$path")
+    if [ "${n:-0}" = "$host_n" ]; then
+      say "$svc:$path" "${GRN}${n}개 ✓${NC}"
+    else
+      say "$svc:$path" "${YLW}${n:-?}개 ✗ (호스트 ${host_n}개와 불일치)${NC}"
+      BROKEN="$BROKEN $svc"
+    fi
+  done
+}
+
+check_mounts
+if [ -n "${BROKEN// /}" ]; then
+  echo "  ↻ 자동 복구: docker compose up -d --force-recreate$BROKEN"
+  # shellcheck disable=SC2086
+  docker compose up -d --force-recreate $BROKEN >/dev/null 2>&1
+  sleep 10
+  echo "▶ /data 마운트 재검증"
+  unset STACK_UP_FORCE_BROKEN     # 훅은 1회성 — 재검증은 진짜 상태를 본다
+  check_mounts
+  if [ -n "${BROKEN// /}" ]; then
+    say "복구 실패" "${RED}${BROKEN}${NC}"
+    echo "     └ 수동: docker compose down && make up"
+    fail=1
+  else
+    say "자가복구" "${GRN}성공${NC}"
+  fi
+fi
 
 # ── 의존 서비스가 실제로 응답하나 ────────────────────────────────────────────
 echo "▶ 서비스 응답"
