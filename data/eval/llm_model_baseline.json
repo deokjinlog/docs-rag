@@ -1,0 +1,39 @@
+{
+  "measured": "2026-09-07~08",
+  "model": "Qwen3-4B-AWQ",
+  "model_size_gib": 2.48,
+  "kv_cache_tokens": 47808,
+  "max_model_len": 8192,
+  "scores": {
+    "eval_sql_routing": {
+      "accuracy": 1.0,
+      "n": 31,
+      "note": "최종 route(sql/rag)"
+    },
+    "eval_tool_routing_in": {
+      "accuracy": 0.871,
+      "misroute": 0.129,
+      "n": 31
+    },
+    "eval_tool_routing_held": {
+      "accuracy": 0.893,
+      "misroute": 0.107,
+      "precision": 0.893,
+      "n": 28
+    },
+    "eval_multihop_det": {
+      "tool_recall": 1.0,
+      "elem_recall": 0.92,
+      "no_forbidden": 0.92,
+      "n": 12
+    },
+    "eval_multihop_llm": {
+      "tool_recall": 1.0,
+      "elem_recall": 0.67,
+      "no_forbidden": 0.92,
+      "n": 12
+    },
+    "tool_route_latency_p50_ms": 659
+  },
+  "note": "LLM 교체 전 기준선. 시맨틱 라우터(embedding)는 LLM 무관이라 제외. 교체 후 같은 채점기로 대조해 개선 여부를 판단한다 — '최신이니 낫다'는 가정을 재는 것"
+}

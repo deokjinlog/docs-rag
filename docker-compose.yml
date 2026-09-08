@@ -53,7 +53,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./model/Qwen3-4B-AWQ:/model   # 로컬 LLM (scripts/download_models.sh) — GPU 독점. 모델 교체 시 이 경로 + .env LLM_TOKENIZER_PATH 동시 변경
+      # 로컬 LLM (scripts/download_models.sh) — GPU 독점.
+      # 경로를 env 로 뺐다: 모델 교체·롤백이 .env 의 LLM_MODEL_DIR 한 줄이면 된다.
+      # ⚠ LLM_TOKENIZER_PATH(.env)도 같은 모델을 가리켜야 한다 — 토크나이저가 어긋나면
+      #   토큰 예산 계산(rag/tokens.py)이 조용히 틀어진다.
+      - ./model/${LLM_MODEL_DIR:-Qwen3-4B-AWQ}:/model
     deploy:
       resources:
         reservations:
