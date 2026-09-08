@@ -163,3 +163,37 @@ from paddleocr import PPStructureV3
 e=PPStructureV3(use_doc_orientation_classify=False, use_doc_unwarping=False, lang='korean')
 print(len(list(e.predict('/data/output/raw/<문서>_images/<이미지>.png'))))"
 ```
+
+---
+
+# paddle 컨테이너가 GPU 를 못 본다 — CUDA compat 라이브러리가 WSL 드라이버를 가린다
+
+**증상**: `nvidia-smi -L` 은 컨테이너 안에서 정상 동작(GPU 0 보임)인데
+`paddle.device.cuda.device_count()` 가 **0**, `get_device_capability()` 는
+`CUDA error(100) no CUDA-capable device is detected`.
+
+같은 GPU·같은 호스트에서 vllm 컨테이너는 정상이다. 차이는 **LD_LIBRARY_PATH** 였다:
+
+```
+paddle  /usr/local/cuda-13.0/compat : ... : /usr/local/cuda/lib64
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ 여기 libcuda.so.580.82.07 (96MB) 가 있다
+vllm    /usr/local/nvidia/lib64 : /usr/local/cuda/lib64
+        (compat 없음 → WSL 드라이버 /usr/lib/wsl/lib 를 정상적으로 찾는다)
+```
+
+호스트 WSL 드라이버는 **610.74** 인데 compat 라이브러리는 **580** 대응이다.
+더 낮은 버전이 앞에 있어 실제 드라이버를 가리고, CUDA 초기화가 "장치 없음" 으로 실패한다.
+(`/usr/lib/x86_64-linux-gnu/libcuda.so.1` 187KB 는 두 컨테이너 모두 갖고 있는 **스텁**이라
+원인이 아니다 — vllm 도 같은 스텁을 갖고 정상 작동한다.)
+
+**해결** — WSL 드라이버 경로를 앞에 둔다:
+```bash
+docker compose exec -e LD_LIBRARY_PATH=/usr/lib/wsl/lib:/usr/local/cuda-13.0/targets/x86_64-linux/lib \
+  -e CUDA_VISIBLE_DEVICES=0 paddle python3 -c "
+import paddle; print(paddle.device.cuda.device_count(), paddle.device.cuda.get_device_capability())"
+# → 1 (8, 9)   ← Ada sm_89 정상 인식
+```
+
+**참고**: compose 의 paddle 주석은 *"RTX PRO 6000 Blackwell(sm_120) 미지원으로 CPU 고정"*
+이라고 돼 있는데 **이 장비에는 해당 없다**(RTX 4060 Laptop = Ada sm_89). 다른 환경에서
+가져온 주석이다. 이 머신에서는 위 경로만 잡으면 GPU 가 동작한다.
