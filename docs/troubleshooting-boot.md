@@ -118,3 +118,48 @@ loginctl enable-linger "$USER"
 docker compose down && make up       # 마운트 캐시를 통째로 다시 만든다
 ```
 Docker Desktop 자체를 재시작하는 게 가장 확실하다 — 캐시가 거기 있기 때문이다.
+
+---
+
+# PP-StructureV3(OCR)가 추론 시 죽는다 — paddle 3.3.1 oneDNN/PIR 버그
+
+**증상**: `/ocr` 요청이 HTTP 000(연결 끊김)으로 끝나고 컨테이너 RestartCount 가 증가한다.
+메모리는 문제가 아니다(6g 로 올려도 901MiB 만 씀). GPU 여유와도 무관(vLLM 내려도 동일).
+
+**원인** — 컨테이너 안에서 직접 실행해 잡았다(HTTP 경유로는 재시작에 에러가 묻힌다):
+
+```
+NotImplementedError: (Unimplemented) ConvertPirAttribute2RuntimeAttribute
+  not support [pir::ArrayAttribute<pir::DoubleAttribute>]
+  at .../new_executor/instruction/onednn/onednn_instruction.cc:116
+```
+
+레이아웃 검출 모델을 oneDNN 경로로 실행할 때 PIR 신 실행기가 속성 타입을 못 바꾼다.
+`paddle 3.3.1` + `paddleocr 3.4.0` + `paddlex[ocr] 3.4.3` 조합의 버그다.
+
+**안 통한 것들** (전부 실측):
+- `paddle.set_flags({"FLAGS_use_mkldnn": False})` — server.py 가 이미 하고 있으나 **안 먹는다**
+- 환경변수 `FLAGS_use_mkldnn=0`, `FLAGS_enable_pir_api=0`, 둘 다 — 동일 에러
+- `mem_limit` 3g→6g — 무관(사용량 901MiB)
+- vLLM 내려 GPU 확보 — 무관
+
+paddlex 가 **자체 Config 로 predictor 를 만들기** 때문에 paddle 전역 FLAGS 가 안 닿는다
+(`paddlex/inference/models/common/static_infer.py`). `PPStructureV3.__init__` 에도
+mkldnn/device 파라미터가 없다.
+
+**영향**: `ocr.py` 가 실패를 빈 결과로 대체해 **image/table 청크가 조용히 사라진다.**
+실측 코퍼스: text 7,882 · table 851 · **image 0**. 이미지 451개(19개 문서)를 뽑아놓고
+하나도 못 쓰고 있었다. docling 하이브리드가 같은 패턴으로 한 번도 안 돌던 전례와 동일하다.
+
+**대응**: 실패를 WARNING → ERROR 로 올려 관측에 노출했다. 근본 해결은 버전 조합 변경
+(paddle/paddleocr 다운그레이드 또는 업그레이드)이 필요한데, **파싱을 PaddleOCR-VL 로
+옮기는 방향과 겹치므로** 그쪽 실측 결과를 보고 정한다.
+
+확인 명령:
+```bash
+docker compose exec paddle python3 -c "
+import paddle; paddle.set_device('cpu')
+from paddleocr import PPStructureV3
+e=PPStructureV3(use_doc_orientation_classify=False, use_doc_unwarping=False, lang='korean')
+print(len(list(e.predict('/data/output/raw/<문서>_images/<이미지>.png'))))"
+```

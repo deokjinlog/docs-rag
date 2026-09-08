@@ -144,7 +144,18 @@ def ocr_images(self, prev_result: dict):
                     try:
                         ocr_results[(match, rel_path, img_path)] = future.result()
                     except Exception as e:
-                        logger.warning(f"[OCR 실패] {img_path}: {e}")
+                        # ERROR로 올린다(WARNING 아님) — 빈 결과로 대체하면 파이프라인은
+                        # 통과하지만 **image/table 청크가 조용히 사라진다**. docling 하이브리드가
+                        # 같은 패턴으로 한 번도 안 돌고 있었던 전례가 있다(1fd1cfb).
+                        # 실측(2026-09-08): PP-StructureV3 가 paddle 3.3.1 + paddleocr 3.4.0
+                        # 조합에서 oneDNN/PIR 실행기 버그로 추론 시 죽는다 —
+                        #   NotImplementedError: ConvertPirAttribute2RuntimeAttribute
+                        #   not support [pir::ArrayAttribute<pir::DoubleAttribute>]
+                        #   (onednn_instruction.cc:116)
+                        # FLAGS_use_mkldnn/FLAGS_enable_pir_api 를 env 로 꺼도 안 먹는다
+                        # (paddlex 가 자체 Config 로 predictor 를 만들어 paddle FLAGS 가 안 닿음).
+                        # 그 결과 코퍼스의 image 청크가 **0개**다(text 7,882 · table 851 · image 0).
+                        logger.error(f"[OCR 실패 → 빈 결과로 대체(품질 열화)] {img_path}: {e}")
                         ocr_results[(match, rel_path, img_path)] = {"text": "", "tables": [], "dropped": []}
 
             # [2단계] 결과 분류 → image 청크 + table 청크 생성
