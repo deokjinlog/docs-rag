@@ -35,5 +35,36 @@
     },
     "tool_route_latency_p50_ms": 659
   },
-  "note": "LLM 교체 전 기준선. 시맨틱 라우터(embedding)는 LLM 무관이라 제외. 교체 후 같은 채점기로 대조해 개선 여부를 판단한다 — '최신이니 낫다'는 가정을 재는 것"
+  "note": "LLM 교체 전 기준선. 시맨틱 라우터(embedding)는 LLM 무관이라 제외. 교체 후 같은 채점기로 대조해 개선 여부를 판단한다 — '최신이니 낫다'는 가정을 재는 것",
+  "candidates_evaluated": [
+    {
+      "model": "cyankiwi/Qwen3.5-4B-AWQ-4bit",
+      "date": "2026-09-08",
+      "verdict": "reject",
+      "weights_gib": 3.84,
+      "kv_cache_tokens": 12672,
+      "tool_parser": "qwen3_xml",
+      "scores": {
+        "eval_tool_routing_held": {
+          "accuracy": 0.679,
+          "misroute": 0.214,
+          "precision": 0.76,
+          "abstain": 3,
+          "n": 28
+        }
+      },
+      "why": "정확도 0.893→0.679 · 오라우팅률 0.107→0.214(2배) · KV 47,808→12,672토큰(3.8배 감소). 세 지표 전부 악화. 가중치가 2.48→3.84 GiB 로 커지며 KV 를 잠식했고, 8GB 카드에서 RAG 는 KV 가 곧 품질이다.",
+      "gotchas": [
+        "Qwen3.5 는 chat template 이 **XML 툴콜**을 요구한다 → --tool-call-parser qwen3_xml (hermes 는 JSON 기대). 어긋나면 모델은 툴콜을 뱉는데 파서가 못 읽어 content 로 새고 tool_calls 가 빈 배열이 된다 — '모델이 툴을 못 고른다'로 오진하기 쉽다.",
+        "확인법: /v1/chat/completions/render 로 프롬프트를 받아 /detokenize 로 디코드하면 템플릿이 요구하는 형식이 그대로 보인다.",
+        "docker-compose 의 `command: >` 는 folded scalar 라 **안에 주석을 넣으면 안 된다** — '#'이 커맨드 문자열의 일부가 되어 compose 가 파싱에 실패하고, up 이 옛 설정으로 돌아 env 변경이 조용히 무시된다(이 때문에 첫 측정 3회가 무효였다).",
+        "모델 볼륨 교체는 --force-recreate 로 안 바뀐다. `docker compose rm -sf vllm && up` 필요."
+      ]
+    }
+  ],
+  "rollback_verified": {
+    "date": "2026-09-08",
+    "eval_tool_routing_held_accuracy": 0.893,
+    "kv_cache_tokens": 44816
+  }
 }

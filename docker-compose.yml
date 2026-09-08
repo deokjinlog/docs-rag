@@ -65,6 +65,16 @@ services:
             - driver: nvidia
               device_ids: ["0"]
               capabilities: [gpu]
+    # ⚠ command 는 folded scalar(`>`) 라 **안에 주석을 넣으면 안 된다** — '#' 이 주석이 아니라
+    #   커맨드 문자열의 일부가 되어 compose 가 "invalid command line string" 으로 파싱에
+    #   실패한다. 그러면 up 이 옛 설정으로 돌아 **환경변수 변경이 조용히 무시된다**(실측).
+    #   설명은 반드시 여기, 블록 **밖**에 쓴다.
+    #
+    # tool-call-parser 는 **모델 chat template 이 요구하는 형식**과 맞아야 한다:
+    #   Qwen3   → hermes     <tool_call>{"name":..,"arguments":{..}}</tool_call>   (JSON)
+    #   Qwen3.5 → qwen3_xml  <tool_call><function=N><parameter=K>V</parameter></function></tool_call>
+    # 어긋나면 모델은 툴콜을 뱉는데 파서가 못 읽어 **content 로 새고 tool_calls 는 빈 배열**이 된다.
+    # /v1/chat/completions/render + /detokenize 로 템플릿이 요구하는 형식을 직접 확인할 수 있다.
     command: >
       --model /model
       --tensor-parallel-size 1
@@ -72,7 +82,7 @@ services:
       --gpu-memory-utilization 0.80
       --kv-cache-dtype fp8_e4m3
       --enable-auto-tool-choice
-      --tool-call-parser hermes
+      --tool-call-parser ${LLM_TOOL_PARSER:-hermes}
     restart: unless-stopped
 
   paddle:
