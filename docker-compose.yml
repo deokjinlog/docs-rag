@@ -93,6 +93,8 @@ services:
       - "5003:5003"
     volumes:
       - ./data:/data
+      # PaddleOCR-VL 가중치. VL 파이프라인은 vl_rec_model_dir 로 로컬 경로를 받는다
+      - ./model:/app/model:ro
       - paddle_cache:/root/.paddlex
     environment:
       # Why CPU mode: RTX PRO 6000 Blackwell(sm_120) 지원이 현재 paddlepaddle
