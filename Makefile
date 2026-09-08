@@ -53,6 +53,9 @@ eval-tool-route: ## 툴콜링 라우팅 채점 (vLLM 에 --enable-auto-tool-choi
 eval-multihop: ## 멀티홉(에이전트) 골든 — 툴 recall·금지툴·요소 recall (스택 + vLLM 필요)
 	python3 scripts/eval_multihop.py
 
+compare-parsers: ## 파서 비교 (ODL vs PaddleOCR-VL) — MD_A/MD_B 로 마크다운 두 개를 준다
+	python3 scripts/compare_parsers.py --md-a "$(MD_A)" --md-b "$(MD_B)"
+
 up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 compose up 대신 이걸 쓴다
 	bash scripts/stack_up.sh
 
