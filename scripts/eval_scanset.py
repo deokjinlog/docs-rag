@@ -67,7 +67,9 @@ def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[fl
     반환 (recall, 평균유사도): 정답 줄 중 임계 이상으로 매칭된 비율과, 그 매칭들의 평균.
     """
     tl = [l.strip() for l in truth.splitlines() if len(l.strip()) >= 4]
-    pl = [l.strip() for l in pred_lines if l.strip()]
+    # VL 은 마크다운을 통짜로 준다(파일당 1개) — 줄로 펴야 OCR 과 같은 축에서 비교된다.
+    # 안 펴면 거대한 '한 줄' 하나가 되어 매칭이 전부 실패하고 recall 이 0 으로 나온다(실측).
+    pl = [ln.strip() for chunk in pred_lines for ln in str(chunk).splitlines() if ln.strip()]
     if not tl:
         return (0.0, 0.0)
     try:
@@ -81,6 +83,27 @@ def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[fl
             hits += 1
             sims.append(m[1] / 100)
     return (round(hits / len(tl), 4), round(sum(sims) / len(sims), 4) if sims else 0.0)
+
+
+def trigram_recall(pred: str, truth: str) -> float:
+    """**순서·줄구조 모두 독립**인 인식 품질 — 문자 3-gram 집합 겹침.
+
+    왜 세 번째 지표가 필요한가 — 앞의 둘이 각각 한쪽에 유리하게 편향돼 있다:
+
+        줄 recall   OCR 은 줄 단위로 뱉고 VL 은 문단으로 합친다 → **OCR 에 유리**
+                    (실측: OCR 0.75 vs VL 0.24. VL 이 못 읽어서가 아니라 줄이 안 맞아서)
+        CER         OCR 은 검출 순서라 뒤섞이고 VL 은 읽기순서를 지킨다 → **VL 에 유리**
+                    (실측: OCR 0.76 vs VL 0.28)
+
+    3-gram 은 순서도 줄바꿈도 안 본다. "글자를 얼마나 맞게 읽었나"만 남는다.
+    """
+    def grams(x: str) -> set[str]:
+        x = _WS.sub("", x or "")
+        return {x[i:i + 3] for i in range(len(x) - 2)}
+    t = grams(truth)
+    if not t:
+        return 0.0
+    return round(len(t & grams(pred)) / len(t), 4)
 
 
 # ── 엔진 실행 (paddle 컨테이너 안에서) ────────────────────────────────────────
@@ -182,15 +205,16 @@ def report() -> int:
                 r["cer"] = round(cer(" ".join(r.get("lines") or []), truths[r["truth"]]), 4)
                 r["cer_ro"] = _cer_reordered(r, truths[r["truth"]])
                 r["lrec"], r["lsim"] = line_recall(r.get("lines") or [], truths[r["truth"]])
+                r["tri"] = trigram_recall(" ".join(r.get("lines") or []), truths[r["truth"]])
             rows.append(r)
     if not rows:
         print("결과 없음 — --engine ocr / --engine vl 을 먼저 돌린다", file=sys.stderr)
         return 2
 
     import statistics
-    print(f"  {'변형':<8}{'엔진':<6}{'n':>4}{'줄 recall':>11}{'평균유사도':>11}"
-          f"{'CER 원시':>10}{'CER 재정렬':>11}{'초/장':>8}")
-    print("  " + "─" * 76)
+    print(f"  {'변형':<8}{'엔진':<6}{'n':>4}{'3-gram':>9}{'줄recall':>10}{'줄유사도':>10}"
+          f"{'CER':>8}{'초/장':>8}")
+    print("  " + "─" * 68)
     by = {}
     for r in rows:
         by.setdefault((r["variant"], r["engine"]), []).append(r)
@@ -210,17 +234,18 @@ def report() -> int:
             gain = f"{statistics.median(cs) - rom:+.3f}" if rom is not None else "—"
             lr = statistics.median([r.get("lrec", 0) for r in rs])
             ls = statistics.median([r.get("lsim", 0) for r in rs])
-            print(f"  {variant:<8}{engine:<6}{len(cs):>4}{lr:>11.3f}{ls:>11.3f}"
-                  f"{statistics.median(cs):>10.3f}"
-                  f"{(f'{rom:.3f}' if rom is not None else '—'):>11}"
-                  f"{statistics.mean(r['sec'] for r in rs):>8.1f}")
+            tri = statistics.median([r.get("tri", 0) for r in rs])
+            best[engine] = -tri          # 판정은 3-gram 으로 — 편향 없는 축
+            print(f"  {variant:<8}{engine:<6}{len(cs):>4}{tri:>9.3f}{lr:>10.3f}{ls:>10.3f}"
+                  f"{statistics.median(cs):>8.3f}{statistics.mean(r['sec'] for r in rs):>8.1f}")
         if len(best) == 2:
             w = min(best, key=best.get)
             gap = abs(best['ocr'] - best['vl'])
             print(f"  {'':<8}{'':<6}{'':>4}{'':>10}{'':>10}{'':>8}   "
                   f"→ {w.upper()} 우세 (차 {gap:.3f})")
-    print("\n  줄 recall = 정답 줄이 예측 어딘가에 있나(**순서 독립** — 인식 품질)")
-    print("  CER      = 편집거리/정답길이(**순서 포함** — 정답이 PyMuPDF 순서라 순서 차이도 벌점)")
+    print("\n  3-gram   = 문자 3-gram 겹침(**순서·줄구조 독립**) — 판정 기준")
+    print("  줄recall = 정답 줄이 예측에 있나 (줄 단위로 뱉는 OCR 에 유리)")
+    print("  CER      = 편집거리/정답길이 (읽기순서를 지키는 VL 에 유리)")
     return 0
 
 

@@ -59,6 +59,12 @@ compare-parsers: ## 파서 비교 (ODL vs PaddleOCR-VL) — MD_A/MD_B 로 마크
 triage: ## 페이지 분류 분포 (캐스케이드 M1) — 어느 경로로 갈 페이지가 몇 %인가
 	uv run --no-project --with pymupdf python scripts/triage_pages.py --all
 
+scanset: ## 합성 스캔셋 생성 (캐스케이드 M3) — 네이티브 PDF 를 래스터라이즈, 정답은 텍스트 레이어
+	uv run --no-project --with pymupdf --with pillow python scripts/make_scanset.py --pdf "$(PDF)" --out data/eval/scanset
+
+eval-scanset: ## 스캔셋 채점 (OCR vs VL). ENGINE=ocr|vl 로 실행, 없으면 저장된 결과 리포트
+	uv run --no-project --with rapidfuzz python scripts/eval_scanset.py $(if $(ENGINE),--engine $(ENGINE),)
+
 up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 compose up 대신 이걸 쓴다
 	bash scripts/stack_up.sh
 
