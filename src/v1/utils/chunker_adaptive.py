@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from .preprocess import (
     normalize_whitespace, clean_text,
     is_page_marker, extract_page_range, parse_heading,
+    IMAGE_TAG_ANY_RE,
 )
 from ..config import TEXT_MAX_CHARS, TABLE_MAX_CHARS, CHUNK_MIN_CHARS
 
@@ -34,9 +35,9 @@ _LEADER_RE = re.compile(r'\.{4,}|·{5,}|…{3,}')               # 점선 목차 
 _FRAGMENT_TAIL_RE = re.compile(r'(?:다|요|음|함|됨|임)\s*[.。]$')  # 문장 종결 꼬리(heading 오검출 신호)
 _STRUCT_MARKER_RE = re.compile(r'제\s*\d+\s*[조관장절편]|별표|【')
 # 미디어 노이즈 — 임베딩 텍스트 오염. 이미지 OCR은 별도 image 청크로 처리되므로 텍스트 청크의
-# 마크다운 이미지 태그는 순수 잔해. ODL이 `![](<경로>)` 형식으로 뱉어 OCR 태스크의 `![image N]`
-# 정규식을 빠져나가 청크에 남던 것을 청킹 진입 시 제거. <br>도 공백으로.
-_IMG_TAG_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
+# 마크다운 이미지 태그는 순수 잔해. OCR 태스크가 상류에서 지우지만(정규식 수정 후) 여기는
+# **안전망으로 남긴다** — 확장자 없는 태그나 OCR 스킵 문서까지 받아내야 하므로 더 넓다.
+_IMG_TAG_RE = IMAGE_TAG_ANY_RE
 _BR_RE = re.compile(r'<br\s*/?>', re.IGNORECASE)
 
 log = logging.getLogger(__name__)

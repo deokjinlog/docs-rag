@@ -25,7 +25,9 @@ CHUNKER_TYPE = os.environ["CHUNKER_TYPE"]
 from ..repository import DocumentRepository, ExtractRepository, ChunkRepository
 from ..logger import celery_logger as logger
 
-_IMAGE_TAG_RE = re.compile(r'!\[image\s+\d+\]\((.+?\.(?:png|jpg|jpeg|gif|bmp|tiff))\)')
+# 정규식은 preprocess 에 단일 정의 — 여기·청커·preprocess 세 곳에 복제돼 있다가 서로
+# 달라져서 이 태스크가 통째로 no-op 이 됐던 전례가 있다(아래 상세). 다시 복제하지 말 것.
+from ..utils.preprocess import IMAGE_TAG_RE as _IMAGE_TAG_RE
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
 _PAGE_RE = re.compile(r'<!-- page:(\d+) -->')
 
@@ -87,7 +89,20 @@ def ocr_images(self, prev_result: dict):
 
             image_matches = list(_IMAGE_TAG_RE.finditer(md_text))
             if not image_matches:
-                logger.info(f"[OCR 스킵] 이미지 없음: {document_name}")
+                # 이 로그가 **정상**인지 **정규식이 못 잡은 것**인지 구분되어야 한다.
+                # 실제로 후자였다: ODL 은 `![](<경로.png>)` 를 뱉는데 정규식은
+                # `![image N](경로.png)` 를 기대해 매칭 0건 → 매 문서가 여기로 빠졌고
+                # paddle 은 호출된 적이 없다(코퍼스 image 청크 0개). 이미지 파일이
+                # 디스크에 있는데 태그를 못 잡았으면 WARNING 으로 올린다.
+                imgs = OUTPUT_RAW_DIR.glob(f"{document_name.rsplit('.', 1)[0]}_images/*.png")
+                orphan = sum(1 for _ in imgs)
+                if orphan:
+                    logger.warning(
+                        f"[OCR 스킵] 태그 미검출인데 이미지 파일 {orphan}개 존재: "
+                        f"{document_name} — 마크다운 이미지 표기와 IMAGE_TAG_RE 불일치 의심"
+                    )
+                else:
+                    logger.info(f"[OCR 스킵] 이미지 없음: {document_name}")
                 doc_repo.update_status(service_code, document_id, StatusCode.COMPLETE_OCR)
                 return prev_result
 

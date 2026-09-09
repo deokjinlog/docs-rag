@@ -8,6 +8,22 @@ import unicodedata
 
 PAGE_MARKER_RE = re.compile(r'^\s*<!--\s*page:(\d+)\s*-->\s*$')
 
+# ── 마크다운 이미지 태그 (한 곳에 모아둔다) ──────────────────────────────────
+# 이 패턴이 세 모듈(ocr 태스크·청커·여기)에 각각 복제돼 있었고, **서로 달라져서** 조용히
+# 깨졌다. ODL 실제 출력은 `![](<경로.png>)` — 빈 alt 에 꺾쇠로 감싼 경로다. 그런데 OCR
+# 태스크는 `![image N](경로.png)` 를 기대해 **한 건도 매칭되지 않았고**, 그래서 매 문서에서
+# "이미지 없음"으로 조기 return 했다(paddle 은 파이프라인에서 호출된 적이 없다 →
+# image 청크 0개). 청커의 넓은 스크러버가 잔해만 치워서 증상이 색인에 안 드러났다.
+#
+# 두 개인 이유가 있다:
+#   IMAGE_TAG_RE      경로를 **캡처**한다 — OCR 대상 파일을 찾는 용도라 확장자를 제한한다
+#   IMAGE_TAG_ANY_RE  경로를 안 본다 — 텍스트에서 태그를 **지우는** 안전망이라 넓어야 한다
+IMAGE_TAG_RE = re.compile(
+    r'!\[[^\]]*\]\(\s*<?\s*([^<>()\s]+?\.(?:png|jpg|jpeg|gif|bmp|tiff))\s*>?\s*\)',
+    re.IGNORECASE,
+)
+IMAGE_TAG_ANY_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
+
 
 def is_page_marker(line: str) -> int | None:
     m = PAGE_MARKER_RE.match(line)
@@ -36,7 +52,7 @@ def is_noise_line(line: str) -> bool:
     if not stripped:
         return False
     # ODL이 이미지를 마크다운 태그로 변환한 잔해. OCR 태스크에서 별도 처리.
-    if re.match(r'^!\[image\s+\d+\]', stripped):
+    if IMAGE_TAG_ANY_RE.match(stripped):
         return True
     # 목차 점선/말줄임 — PDF 목차의 "제1조 ··········· 15" 패턴
     if '·' * 5 in stripped or '…' * 3 in stripped:
