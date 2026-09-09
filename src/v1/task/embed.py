@@ -120,7 +120,7 @@ def embed_document(self, prev_result: dict):
 
             doc_repo.update_status(service_code, document_id, StatusCode.PROCESSING_EMBED)
 
-            from ..utils import embed_texts, count_tokens
+            from ..utils.embedding import embed_texts, count_tokens
 
             qdrant = _get_qdrant()
 

@@ -185,6 +185,8 @@ services:
       - ./src:/app/src
       - ./data:/app/data
       - ./model:/app/model
+      - ./configs:/app/configs:ro   # triage 임계치 등 — 코드가 아니라 설정이라 읽기전용
+      - ./scripts:/app/scripts      # 벤치·평가 스크립트. pdfplumber·pymupdf 가 여기 있어야 돈다
       - ./tests:/app/tests   # docker exec uv run pytest용 — host 변경 즉시 반영 (conftest.py 포함)
       - ./scripts:/app/scripts   # docker exec uv run python scripts/… 용 (색인·평가; BGE-M3가 컨테이너에만 있음)
     # 임베더·리랭커는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일, GPU는 vLLM 전용)
@@ -237,6 +239,8 @@ services:
       - ./src:/app/src
       - ./data:/app/data
       - ./model:/app/model
+      - ./configs:/app/configs:ro   # triage 임계치 등 — 코드가 아니라 설정이라 읽기전용
+      - ./scripts:/app/scripts      # 벤치·평가 스크립트. pdfplumber·pymupdf 가 여기 있어야 돈다
     # 임베더는 CPU (CUDA_VISIBLE_DEVICES=-1) — GPU 예약 없음 (8GB 프로파일)
     # ⚠ **vllm 은 여기 넣지 않는다.** LLM 은 요청 시점 HTTP 호출이라 기동 의존이 아니다.
     #
@@ -286,6 +290,8 @@ services:
       - ./src:/app/src
       - ./data:/app/data
       - ./model:/app/model
+      - ./configs:/app/configs:ro   # triage 임계치 등 — 코드가 아니라 설정이라 읽기전용
+      - ./scripts:/app/scripts      # 벤치·평가 스크립트. pdfplumber·pymupdf 가 여기 있어야 돈다
     depends_on:
       postgres:
         condition: service_started

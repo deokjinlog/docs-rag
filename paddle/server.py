@@ -405,9 +405,21 @@ def ocr(req: OCRRequest):
                         pass
 
             # 점수 컷 후 남은 게 하나도 없으면 — 의미 있는 검출이 없는 garbage 이미지.
-            # _ocr.json / _ocr_layout.png 둘 다 저장 생략.
+            # 시각화(_ocr_layout.png)는 생략하지만 **_ocr.json 은 남긴다**.
+            # 파일이 없으면 "빈 결과"와 "아직 처리 안 함"이 구분되지 않는다 — 실제로
+            # 451장 중 94장이 그래서 커버리지 79.2% 로 보였고, 재실행할 때마다 같은 94장을
+            # 다시 처리하게 된다(끝나지 않는 배치). empty 플래그로 그 둘을 가른다.
             if not layout_boxes_with_coords and not kept_rec_texts:
-                logger.info(f"[ocr] 저장 생략 (점수 컷 후 빈 결과): {req.image_path}")
+                logger.info(f"[ocr] 빈 결과(점수 컷) — empty 로 기록: {req.image_path}")
+                _save_ocr_json(path, {
+                    "empty": True,
+                    "input_path": str(res["input_path"]) if res["input_path"] else None,
+                    "width": res["width"], "height": res["height"],
+                    "rec_texts": [], "rec_scores": [], "layout_boxes": [],
+                    "parsing_blocks": [],
+                    "raw_line_count": len(raw_rec_texts),   # 컷 전엔 몇 줄이었나 — 진단용
+                    "raw_box_count": len(raw_boxes_all),
+                })
                 continue
 
             # _ocr.json 저장

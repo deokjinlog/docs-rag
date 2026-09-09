@@ -65,7 +65,7 @@ from .schemas import (
     RetrieveRequest,
     TermsRequest,
 )
-from .utils import embed_texts
+from .utils.embedding import embed_texts
 
 
 # Feedback 수집 토글 — 점진적 롤아웃·인프라 장애 시 코드 변경 없이 비활성화.

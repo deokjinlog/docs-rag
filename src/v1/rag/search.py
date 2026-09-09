@@ -21,7 +21,7 @@ from qdrant_client.models import (
 from ..config import BM25_CONFIG, QDRANT_CONFIG
 from ..config.settings import SEARCH_PREFETCH_MULTIPLIER
 from ..logger import api_logger
-from ..utils import embed_query
+from ..utils.embedding import embed_query
 from .clients import invoke_clean, qdrant, reranker
 from .prompts import REWRITE_PROMPT
 from .trace import get_trace, trace_span
