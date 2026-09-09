@@ -37,4 +37,8 @@ celery_app.conf.update(
     result_expires=3600,
     task_default_retry_delay=60,
     task_max_retries=3,
+    # OCR 만 별도 큐로 — paddle(GPU) 이 `ocr` 프로필에서만 뜨기 때문이다(D1 메모리 예산).
+    # 이 라우팅이 없으면 ingest 워커가 OCR 태스크를 가져가서 paddle 없이 실패한다.
+    # ocr 워커가 안 떠 있으면 태스크는 큐에 **대기**한다 — 조용히 건너뛰지 않는다.
+    task_routes={"v1.task.ocr.ocr_images": {"queue": "ocr"}},
 )

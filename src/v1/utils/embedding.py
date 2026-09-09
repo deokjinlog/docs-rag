@@ -3,11 +3,18 @@ local_files_only=True로 HF Hub 접속 없이 로컬 모델만 사용.
 싱글턴으로 로드하여 태스크 간 모델 재로딩 방지.
 """
 
+import os
 import threading
 
 from sentence_transformers import SentenceTransformer
 
 from ..config import EMBEDDING_CONFIG
+
+# 인코딩 배치 상한 (D1). sentence-transformers 기본은 32 인데, 한 문서의 청크를 통째로
+# 넘기면 배치가 커질수록 중간 텐서가 커져 celery 의 3g 한도를 밀어올린다. WSL 15Gi 에서
+# 스택이 4회 죽은 원인 중 하나가 인제스트의 메모리 피크였다 — 처리량을 조금 내주고
+# 천장을 낮춘다. 대형 GPU 로 옮기면 env 로 올리면 된다.
+EMBED_BATCH_SIZE = int(os.environ.get("EMBED_BATCH_SIZE", "16"))
 
 _model = None
 _model_lock = threading.Lock()
@@ -34,7 +41,8 @@ def get_embedding_model() -> SentenceTransformer:
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     model = get_embedding_model()
-    return model.encode(texts, normalize_embeddings=True).tolist()
+    return model.encode(texts, normalize_embeddings=True,
+                        batch_size=EMBED_BATCH_SIZE).tolist()
 
 
 def embed_query(query: str) -> list[float]:

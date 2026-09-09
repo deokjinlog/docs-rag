@@ -1,7 +1,26 @@
+# ── 프로필 (D1, 2026-09-09) ────────────────────────────────────────────────────
+# WSL 15Gi 안에서 **한 번에 뜨는 조합의 mem_limit 합계가 11Gi 를 넘지 않게** 나눈다.
+# 근거: 전부 띄운 상태로 인제스트를 돌리다 스택이 4회 통째로 죽었다. 4회차는 커널 OOM
+# 기록이 없고 postgres 가 exit 0 이었다 — cgroup 이 아니라 Docker Desktop/WSL 레벨에서
+# 내려갔다는 뜻이라, 한도를 높이는 쪽이 아니라 **동시에 뜨는 것을 줄이는 쪽**이 답이다.
+#
+#   serve    api 3 + vllm 4 + infra 2       =  9.0Gi   서빙(/answer·/retrieve)
+#   ingest   celery 3 + odl 3 + flower .5 + infra 2 = 8.5Gi   extract→chunk→embed
+#   ocr      celery-ocr 3 + paddle 5 + infra 2      = 10.0Gi  OCR 단계 전용(GPU)
+#   inspect  api 3 + infra 1.5             =  4.5Gi   Inspector·Eval Studio(읽기 전용)
+#
+# 한도는 실측 기반이다: idle postgres 54MiB · qdrant 110MiB · rabbitmq 152MiB ·
+# odl 567MiB · celery 622MiB / 피크 paddle GPU 3.93GiB · api 2.9GiB(OOM 기록).
+# `make mem-budget` 이 이 표를 compose 에서 다시 계산해 검증한다.
+#
+# ⚠ 프로필이 붙은 서비스는 **해당 프로필을 지정해야만** 뜬다. 프로필 없는 서비스는 항상
+#    뜨므로, 여기서는 모든 서비스에 프로필을 붙였다(빠뜨리면 예산 계산이 무의미해진다).
 services:
   postgres:
     image: postgres:16.6
     container_name: docs-rag-postgres
+    profiles: ["serve", "ingest", "ocr", "inspect"]
+    mem_limit: 512m        # 실측 idle 54MiB. 한도가 없으면 폭주가 무제한이라 천장을 둔다
     environment:
       POSTGRES_DB: docsrag
       POSTGRES_USER: docsrag
@@ -17,6 +36,8 @@ services:
     # GPU 인덱싱 활성화 위해 GPU 빌드 이미지 사용 (Qdrant 1.13+).
     image: qdrant/qdrant:v1.17.1-gpu-nvidia
     container_name: docs-rag-qdrant
+    profiles: ["serve", "ingest", "ocr", "inspect"]
+    mem_limit: 1g          # 실측 idle 110MiB. 8,843청크×1024d INT8 ≈ 9MB 라 여유
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -35,6 +56,11 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: docs-rag-rabbitmq
+    profiles: ["serve", "ingest", "ocr", "inspect"]
+    mem_limit: 512m        # 실측 idle 152MiB.
+                           # inspect 는 큐를 안 쓰지만 api 가 celery_app 을 import 해 broker
+                           # 연결을 유지하므로(api.py 주석) 프로필에 포함한다. 512m 이라
+                           # inspect 예산은 4.5→5.0Gi, 여전히 한도의 절반 미만
     environment:
       RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER}"
       RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASS}"
@@ -48,7 +74,9 @@ services:
   vllm:
     image: vllm/vllm-openai:v0.18.1
     container_name: docs-rag-vllm
-    mem_limit: 6g          # 시스템 RAM 상한(GPU VRAM은 별개). 실측 ~3GB, 넉넉한 천장 — 8GB 박스에서 한 컨테이너 폭주가 WSL 전체를 스왑으로 끌고 가는 것 차단
+    profiles: ["serve"]
+    mem_limit: 4g          # 시스템 RAM 상한(GPU VRAM은 별개). 실측 ~3GB. 6g→4g 로 조임 —
+                           # serve 예산(11Gi)을 맞추기 위해서고, 실측 대비 33% 헤드룸이 남는다
     ipc: host
     ports:
       - "8000:8000"
@@ -88,7 +116,8 @@ services:
   paddle:
     build: ./paddle
     container_name: docs-rag-paddle
-    mem_limit: 3g          # OCR(PP-StructureV3 CPU) 피크 방어. 실측 ~1.7-2.5GB
+    profiles: ["ocr"]
+    mem_limit: 3g          # CPU 경로 피크 실측 ~1.7-2.5GB. GPU 오버레이가 5g 로 덮는다(피크 3.93GiB)
     ports:
       - "5003:5003"
     volumes:
@@ -109,7 +138,8 @@ services:
   odl:
     build: ./odl
     container_name: docs-rag-odl
-    mem_limit: 3g          # Java docling(대형 PDF) 피크 방어
+    profiles: ["ingest"]
+    mem_limit: 3g          # Java docling(대형 PDF) 피크 방어. 1,035p 피크는 미측정 — 여기가 예산의 미지수
     environment:
       # 대형 PDF(700p+) Java 힙 OOM 방어 — 기본힙(~0.75g)이 700~1200p 약관에서 터짐.
       # 3g 컨테이너 캡(누수방어) 안에서 힙 2g(비힙·OS용 ~1g 여유). Dockerfile ENV override.
@@ -128,6 +158,7 @@ services:
     image: docs-rag-app
     build: .
     container_name: docs-rag-api
+    profiles: ["serve", "inspect"]
     mem_limit: 3g          # ★ 누수 방어 핵심 — 실측 정상 1.5GB인데 수 시간 만에 4.58GB로 부풀어 WSL을 스왑으로 밀어넣고 qdrant·postgres·네트워크까지 동반 붕괴시킴. 3g에서 OOM-kill+자동재시작(unless-stopped)으로 국소 격리. 근본 누수는 별도 추적 대상
     command: uvicorn api:app --host 0.0.0.0 --port 8002 --app-dir src
     ports:
@@ -168,14 +199,14 @@ services:
     #     depends_on 제거 → api: running ✅
     # required:false 는 "의존 서비스가 compose 파일에 없어도 됨"에 가깝지, "시작 실패를
     # 무시함"이 아니다. 기동 순서는 scripts/stack_up.sh 가 명시적으로 잡는다.
+    # **odl 도 같은 이유로 뺐다(D1)** — api 는 PDF→MD 변환을 안 쓴다. 게다가 odl 은 ingest
+    # 프로필이라, 남겨두면 serve·inspect 프로필이 아예 유효하지 않은 compose 가 된다.
     depends_on:
       postgres:
         condition: service_started
       qdrant:
         condition: service_started
       rabbitmq:
-        condition: service_started
-      odl:
         condition: service_started
 
     restart: unless-stopped
@@ -184,7 +215,12 @@ services:
     image: docs-rag-app
     container_name: docs-rag-celery
     mem_limit: 3g          # 임베딩 시 BGE-M3/리랭커 로드 피크 방어
-    command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=10 -E
+    profiles: ["ingest"]
+    # 동시성 10 → 2. 10 은 8건 동시 등록 시 Java JVM 을 병렬로 띄워 스택을 통째로 죽였고,
+    # cpu-ingest 오버레이의 4 로도 90초 만에 죽었다(둘 다 실측). CLAUDE.md 가 4 라고 적어둔
+    # 드리프트도 여기서 해소한다 — 이제 base 가 2 이고 오버레이가 필요 없다.
+    # `-Q celery`: OCR 태스크는 ocr 큐로 라우팅되므로 이 워커는 안 가져간다(프로필 분리의 핵심).
+    command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=2 -Q celery -E
     working_dir: /app/src
     env_file: .env
     environment:
@@ -220,14 +256,42 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-      odl:
-        condition: service_started
 
+    restart: unless-stopped
+
+  # OCR 단계 전용 워커 — paddle 과 같은 `ocr` 프로필에만 뜬다.
+  # **왜 워커를 나누나**: paddle GPU 는 호스트 RAM 3.9GiB 를 쓰는데, 이걸 ingest 프로필에
+  # 넣으면 celery 3 + odl 3 + paddle 5 + infra 2 = 13Gi 로 예산(11Gi)을 넘는다. OCR 은
+  # 캐스케이드상 별도 티어이기도 해서(94.7% 페이지는 NATIVE 라 OCR 을 아예 안 탄다)
+  # 단계로 분리하는 게 설계와도 맞는다 — 로드맵의 'Celery gpu 큐(concurrency=1)' 그 자체다.
+  # concurrency=1: GPU 는 한 장이라 동시 추론이 곧 OOM 이다(실측으로 두 번 겪음).
+  celery-ocr:
+    image: docs-rag-app
+    container_name: docs-rag-celery-ocr
+    mem_limit: 3g
+    profiles: ["ocr"]
+    command: celery -A celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1 -Q ocr -E
+    working_dir: /app/src
+    env_file: .env
+    environment:
+      CUDA_VISIBLE_DEVICES: "-1"
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./model:/app/model
+    depends_on:
+      postgres:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     restart: unless-stopped
 
   flower:
     image: docs-rag-app
     container_name: docs-rag-flower
+    profiles: ["ingest"]
     mem_limit: 512m        # 모니터링 UI — 작게 고정 (실측 ~440MB)
     command: celery -A celery_app:celery_app flower --port=5555
     working_dir: /app/src

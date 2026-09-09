@@ -59,13 +59,24 @@ HAS_LLM=0
 # 그래서 docker-compose.yml 의 api·celery depends_on 에서 **vllm 을 뺐다**. 대신 기동
 # 순서를 잡는 책임이 이 스크립트로 왔다 — 여기서 명시적으로 vllm 을 앱보다 먼저 띄운다.
 # 모델이 없으면 건너뛴다(재시작 루프로 CPU 를 태우지 않기 위해).
-echo "▶ 스택 기동"
-docker compose up -d postgres qdrant rabbitmq odl paddle >/dev/null 2>&1
-[ "$HAS_LLM" = 1 ] && docker compose up -d vllm >/dev/null 2>&1
-docker compose up -d api celery flower >/dev/null 2>&1
+# ── 프로필 (D1) ──────────────────────────────────────────────────────────────
+# 전 서비스를 한꺼번에 띄우면 mem_limit 합계가 WSL 15Gi 를 넘어 스택이 통째로 죽는다
+# (실측 4회). 이제 서비스마다 프로필이 붙어 있고, 한 번에 뜨는 조합은 11Gi 이하다.
+# 기본은 serve — 재부팅 후 자동 기동(systemd)이 노리는 상태가 '서빙 가능'이기 때문.
+#   PROFILE=ingest bash scripts/stack_up.sh   처럼 바꿔 쓴다.
+PROFILE="${PROFILE:-serve}"
+IN_PROFILE=" $(docker compose --profile "$PROFILE" config --services 2>/dev/null | tr '\n' ' ') "
+pick() { for s in "$@"; do case "$IN_PROFILE" in *" $s "*) printf '%s ' "$s";; esac; done; }
+INFRA=$(pick postgres qdrant rabbitmq odl paddle)
+APPS=$(pick api celery celery-ocr flower)
+
+echo "▶ 스택 기동 (프로필: $PROFILE)"
+[ -n "$INFRA" ] && docker compose up -d $INFRA >/dev/null 2>&1
+case "$IN_PROFILE" in *" vllm "*) [ "$HAS_LLM" = 1 ] && docker compose up -d vllm >/dev/null 2>&1;; esac
+[ -n "$APPS" ] && docker compose up -d $APPS >/dev/null 2>&1
 
 echo "▶ 컨테이너 상태"
-for svc in postgres qdrant rabbitmq odl paddle api celery; do
+for svc in $INFRA $APPS; do
   st=$(docker compose ps "$svc" --format '{{.State}}' 2>/dev/null)
   if [ "$st" = "running" ]; then
     say "$svc" "${GRN}running${NC}"
@@ -76,7 +87,13 @@ done
 
 # vllm 은 모델 가중치가 있어야만 뜬다. 없으면 재시작 루프를 돌며 CPU 를 태우므로
 # 실패로 세지 않되 **왜 안 뜨는지**는 정확히 알려준다.
-if [ "$HAS_LLM" = 0 ]; then
+case "$IN_PROFILE" in
+  *" vllm "*) ;;
+  *) HAS_LLM=-1 ;;              # 이 프로필엔 vllm 이 없다 — 진단도 하지 않는다
+esac
+if [ "$HAS_LLM" = -1 ]; then
+  :
+elif [ "$HAS_LLM" = 0 ]; then
   say "vllm" "${YLW}건너뜀 — model/Qwen3-4B-AWQ 비어 있음${NC}"
   echo "     └ 받기: uv run --no-project --with 'huggingface_hub[cli]' \\"
   echo "              hf download Qwen/Qwen3-4B-AWQ --local-dir model/Qwen3-4B-AWQ"
@@ -107,7 +124,7 @@ mount_count() {  # $1=서비스 $2=컨테이너내경로 → 보이는 문서 �
 BROKEN=""
 check_mounts() {
   BROKEN=""
-  for pair in "odl:/data" "paddle:/data" "api:/app/data" "celery:/app/data"; do
+  for pair in "odl:/data" "paddle:/data" "api:/app/data" "celery:/app/data" "celery-ocr:/app/data"; do
     local svc=${pair%%:*} path=${pair#*:}
     [ "$(docker compose ps "$svc" --format '{{.State}}' 2>/dev/null)" = "running" ] || continue
     local n; n=$(mount_count "$svc" "$path")

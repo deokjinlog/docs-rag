@@ -12,6 +12,7 @@ docling 이 0 이면 ML 경로가 고장난 것이다(과거 실측 사례: easy
 
 import os
 import re
+import threading
 import json
 import shutil
 from pathlib import Path
@@ -110,9 +111,18 @@ def check_docling_success(json_path: Path) -> bool:
         return False
 
 
+# ODL 변환은 **문서 1건씩 직렬**로만 돈다 (D1).
+# ODL 서버는 요청마다 Java JVM 을 새로 띄운다. celery 가 `--pool=threads` 라 동시성 N 이면
+# JVM 이 N 개 동시에 뜨고, 대형 PDF(1,035p)에서는 그것만으로 WSL 15Gi 를 넘겨 **스택 전체가
+# 죽는다**(실측 4회). 동시성을 2 로 낮춰도 JVM 2개가 겹칠 수 있어서 여기서 한 번 더 막는다.
+# celery 의 concurrency 와 별개인 이유: concurrency 는 임베딩·청킹까지 함께 제한하는데,
+# 그쪽은 병렬로 돌아도 안전하다. 좁게 막아야 처리량을 덜 깎는다.
+_ODL_SLOT = threading.Semaphore(1)
+
+
 # ODL HTTP 변환
 def _run_odl(pdf_path: Path, output_dir: Path, hybrid: str = None) -> None:
-    """ODL HTTP API에 변환 요청.
+    """ODL HTTP API에 변환 요청. **JVM 직렬화 슬롯을 통과해야 한다**(_ODL_SLOT).
     hybrid_timeout을 문자열로 넘기는 이유: ODL 내부에서 문자열 파싱."""
     payload = {
         "input_path": _to_container_path(pdf_path),
@@ -128,7 +138,8 @@ def _run_odl(pdf_path: Path, output_dir: Path, hybrid: str = None) -> None:
         payload["hybrid_url"] = "http://localhost:5010"
         payload["hybrid_timeout"] = str(HYBRID_TIMEOUT_MS)
 
-    resp = requests.post(f"{ODL_URL}/convert", json=payload, timeout=1800)
+    with _ODL_SLOT:                     # JVM 은 한 번에 하나만
+        resp = requests.post(f"{ODL_URL}/convert", json=payload, timeout=1800)
     if resp.status_code != 200:
         try:
             detail = resp.json().get("detail", resp.text)[-500:]

@@ -144,8 +144,28 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 #   answer ~4.5GB  /answer 답변생성         (vllm ON, paddle·odl OFF)
 #   full   ~6.2GB  색인 + /answer 동시      (전부 ON — Ralph 공존 빠듯)
 
-lite: ## 경량(~2GB) — vLLM·paddle·odl 중지. 검색/관계형/make check/eval + Ralph 공존
-	docker compose stop vllm paddle odl
+# ── compose 프로필 (D1) ──────────────────────────────────────────────────────
+# 전 서비스를 함께 띄우면 mem_limit 합계가 WSL 15Gi 를 넘어 스택이 통째로 죽는다(실측 4회).
+# 한 번에 뜨는 조합을 프로필로 못박고 `make mem-budget` 이 합계를 기계로 검증한다.
+mem-budget: ## 프로필별 mem_limit 합계 검증 (11Gi 상한, 한도 미설정도 실패)
+	python3 scripts/mem_budget.py
+	python3 scripts/mem_budget.py -f docker-compose.yml -f docker-compose.paddle-gpu.yml
+
+serve: ## 서빙 프로필 (9.0Gi) — api·vllm·infra. /answer·/retrieve
+	PROFILE=serve bash scripts/stack_up.sh
+
+ingest: ## 인제스트 프로필 (8.5Gi) — celery·odl·infra. extract→chunk→embed (OCR 제외)
+	PROFILE=ingest bash scripts/stack_up.sh
+
+ocr: ## OCR 프로필 (10.0Gi) — celery-ocr(동시성1)·paddle GPU·infra. ocr 큐만 소비
+	docker compose -f docker-compose.yml -f docker-compose.paddle-gpu.yml --profile ocr up -d
+	@echo "→ ocr 큐 소비 시작. 끝나면 'docker compose --profile ocr down' 으로 GPU 반납"
+
+inspect: ## 관측 프로필 (5.0Gi) — api(Inspector·Eval Studio)·infra. 읽기 전용
+	PROFILE=inspect bash scripts/stack_up.sh
+
+lite: ## 경량 — 앱만 내리고 infra 유지 (make check·자립 골든용)
+	docker compose stop vllm paddle odl celery celery-ocr flower 2>/dev/null || true
 	@$(MAKE) --no-print-directory mem
 
 ocr-gpu: ## 이미지 OCR을 GPU로 — 성능 옵션이 아니라 **동작 조건**(CPU 추론은 컨테이너가 죽어 image 청크가 0개였다)
@@ -166,16 +186,5 @@ retrieve-gpu: ## 검색 가속 — api 임베더·리랭커를 GPU로(lite 모�
 	docker compose stop vllm 2>/dev/null || true
 	@echo "→ api 임베더·리랭커 GPU(rerank 18.5s→sub-s). vLLM 복귀 전 'docker compose up -d api'로 CPU 반납"
 
-ingest: ## 색인용(~3.7GB) — paddle·odl 켜고 vLLM은 끔(파이프라인은 LLM 불필요). Ralph 공존 가능
-	docker compose start paddle odl 2>/dev/null || docker compose up -d paddle odl
-	docker compose stop vllm 2>/dev/null || true
-	@echo "→ extract→ocr→chunk→embed 파이프라인 가능. 끝나면 make lite로 반납"
 
-answer: ## /answer용(~4.5GB) — vLLM 켜고 paddle·odl은 끔 (vLLM 재로드 1~2분)
-	docker compose start vllm 2>/dev/null || docker compose up -d vllm
-	docker compose stop paddle odl 2>/dev/null || true
-	@echo "→ vLLM 재로드 1~2분 후 /answer 가능"
 
-full: ## 전체(~6.2GB) — 색인+/answer 동시 (Ralph 공존 빠듯)
-	docker compose start vllm paddle odl 2>/dev/null || docker compose up -d vllm paddle odl
-	@echo "→ vLLM 재로드 1~2분 후 /answer 가능"

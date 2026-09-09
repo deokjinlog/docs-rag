@@ -15,7 +15,8 @@
 # 반납:  docker compose up -d paddle        (오버레이 없이 재생성 → CPU 로 복귀)
 services:
   paddle:
-    mem_limit: 6g          # GPU 경로는 호스트 RAM 도 더 쓴다(모델 스테이징). CPU 3g 로는 OOM
+    mem_limit: 5g          # GPU 경로 호스트 RAM 실측 피크 3.93GiB → 27% 헤드룸.
+                           # 6g 였다가 5g 로 조임 — ocr 프로필 예산(11Gi)을 맞추기 위해서다
     environment:
       CUDA_VISIBLE_DEVICES: "0"
       PADDLE_DEVICE: "gpu:0"
