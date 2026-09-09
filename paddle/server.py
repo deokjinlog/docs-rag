@@ -444,6 +444,24 @@ def ocr(req: OCRRequest):
         error_id = str(uuid4())[:8]
         logger.error(f"[ocr] 실패 [{error_id}]: {e}", exc_info=True)
         raise HTTPException(500, f"OCR 실패. error_id: {error_id}")
+    finally:
+        # ⚠ **8GB 카드에서는 이게 없으면 배치가 못 끝난다.** paddle 의 할당자는 캐시를
+        # 드라이버에 돌려주지 않아서, 요청을 이어 던지면 풀이 카드를 통째로 먹고
+        # (실측: 7,921 / 8,188 MiB) 그 다음 할당이 cudaErrorMemoryAllocation 으로 죽는다.
+        # 실측(2026-09-09): 전량 배치 403장 중 95장까지 성공 → 이후 308장 전부 500.
+        # 이미지가 커서가 아니다(p50 0.93MP · 10MP 초과 6장뿐) — 순전히 미반환 누적이다.
+        _release_gpu()
+
+
+def _release_gpu() -> None:
+    """요청 사이에 GPU 캐시를 드라이버에 반환. CPU 모드면 아무것도 안 한다."""
+    if DEVICE.startswith("cpu"):
+        return
+    try:
+        import paddle
+        paddle.device.cuda.empty_cache()
+    except Exception as e:          # 반환 실패가 요청을 죽이면 안 된다
+        logger.warning(f"[gpu] empty_cache 실패: {e}")
 
 
 @app.get("/health")

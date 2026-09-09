@@ -20,6 +20,10 @@ services:
       CUDA_VISIBLE_DEVICES: "0"
       PADDLE_DEVICE: "gpu:0"
       LD_LIBRARY_PATH: "/usr/lib/wsl/lib:/usr/local/cuda-13.0/targets/x86_64-linux/lib"
+      # 사전 선점 금지 + 증가형 할당. 기본값은 기동 시 카드를 크게 잡아두는데,
+      # 8GB 한 장에서는 그게 곧 OOM 이다(실측: 배치 95장째부터 전부 실패).
+      FLAGS_allocator_strategy: "auto_growth"
+      FLAGS_fraction_of_gpu_memory_to_use: "0"
     deploy:
       resources:
         reservations:

@@ -28,10 +28,17 @@ import sys
 
 # 변형 정의 — dpi 와 후처리. 이름이 곧 결과 디렉토리명이 된다.
 VARIANTS = {
-    "clean": dict(dpi=200),
-    "low":   dict(dpi=120),
-    "skew":  dict(dpi=200, angle=2.0),
-    "dark":  dict(dpi=200, gamma=0.6),
+    "clean":  dict(dpi=200),
+    "low":    dict(dpi=120),
+    "skew":   dict(dpi=200, angle=2.0),
+    "dark":   dict(dpi=200, gamma=0.6),
+    # ── 난이도 태그와 1:1 대응하는 변형 (2026-09-09 추가) ──────────────────
+    # 기존 4종만으로는 photographed 의 **조도 신호를 검증할 수 없었다**. dark 는 균일
+    # gamma 라 방향성이 없어서, 4분면 밝기 편차가 clean(6.8~28.8)과 완전히 겹쳤다
+    # (문서 내용이 만드는 편차가 조명 편차보다 컸다). shadow 가 그 축을 만든다.
+    "shadow": dict(dpi=200, shadow=0.55),   # → photographed (방향성 그라데이션)
+    "fax150": dict(dpi=150, blur=1.2, noise=8),  # → old_scan (저해상 + 뭉갬 + 노이즈)
+    "shrink": dict(dpi=200, shrink=0.6),    # → tiny_text (축소 후 재확대 = 유효 해상도 손실)
 }
 
 MIN_TRUTH_CHARS = 400   # 정답이 너무 짧으면 CER 이 요동친다
@@ -54,15 +61,47 @@ def _is_body(text: str) -> bool:
     return dots / max(len(text), 1) <= MAX_DOT_RATIO
 
 
-def _degrade(img, angle: float | None = None, gamma: float | None = None):
-    from PIL import Image
+def _degrade(img, angle=None, gamma=None, shadow=None, blur=None, noise=None, shrink=None):
+    from PIL import Image, ImageFilter
     if angle:
         # expand=True 로 잘림 방지. 흰 배경으로 채워 스캔처럼 보이게 한다
         img = img.rotate(angle, resample=Image.BICUBIC, expand=True, fillcolor="white")
     if gamma:
         lut = [min(255, int((i / 255) ** gamma * 255)) for i in range(256)]
         img = img.point(lut * len(img.getbands()))
+    if shadow:
+        # 방향성 그라데이션 — 왼쪽 1.0 → 오른쪽 `shadow` 배. 책을 펼쳐 찍었을 때의
+        # 한쪽 그늘을 흉내낸다. gamma(균일)와 달리 **위치에 따라** 밝기가 달라져서
+        # 저주파 조도 신호가 실제로 반응하는지 시험할 수 있다.
+        w, h = img.size
+        # 256x256 정사각 그라데이션을 먼저 회전하고 **그 다음** 페이지 크기로 늘린다.
+        # (늘린 뒤 회전하면 가로세로가 뒤바뀌어 composite 이 크기 불일치로 죽는다)
+        ramp = Image.linear_gradient("L").transpose(Image.ROTATE_90).resize((w, h))
+        img = Image.composite(img, _scale(img, shadow), ramp)  # 한쪽 원본 · 반대쪽 어둡게
+    if blur:
+        img = img.filter(ImageFilter.GaussianBlur(blur))
+    if noise:
+        import random
+        random.seed(0)                                          # 재현 가능해야 회귀가 된다
+        px = img.load()
+        w, h = img.size
+        for y in range(0, h, 2):                                # 2픽셀 간격 — 속도
+            for x in range(0, w, 2):
+                d = random.randint(-noise, noise)
+                v = px[x, y]
+                px[x, y] = tuple(max(0, min(255, c + d)) for c in v) if isinstance(v, tuple) \
+                    else max(0, min(255, v + d))
+    if shrink:
+        w, h = img.size
+        img = img.resize((max(1, int(w * shrink)), max(1, int(h * shrink))), Image.BICUBIC)
+        img = img.resize((w, h), Image.BICUBIC)                 # 되돌려도 정보는 안 돌아온다
     return img
+
+
+def _scale(img, f: float):
+    """밝기를 f 배 (그림자용 어두운 판)."""
+    lut = [min(255, int(i * f)) for i in range(256)]
+    return img.point(lut * len(img.getbands()))
 
 
 def main() -> int:
@@ -108,7 +147,9 @@ def main() -> int:
             zoom = cfg["dpi"] / 72
             pix = src[pno].get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            img = _degrade(img, cfg.get("angle"), cfg.get("gamma"))
+            img = _degrade(img, cfg.get("angle"), cfg.get("gamma"),
+                           cfg.get("shadow"), cfg.get("blur"), cfg.get("noise"),
+                           cfg.get("shrink"))
             vd = out / vname
             vd.mkdir(exist_ok=True)
             ip = vd / f"p{pno + 1:04d}.png"
@@ -118,8 +159,20 @@ def main() -> int:
                              "truth": str(tp.relative_to(out)),
                              "truth_chars": len(truth),
                              "dpi": cfg["dpi"], "size": [img.width, img.height]})
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
-                                       encoding="utf-8")
+    # ⚠ **덮어쓰면 안 된다.** `--variants` 로 일부만 다시 만들면 예전 항목이 통째로
+    # 사라져서, 이미지는 디스크에 있는데 채점기가 못 찾는 상태가 된다(실측으로 한 번 겪음).
+    # 이번에 만든 변형만 교체하고 나머지는 보존한다.
+    mpath = out / "manifest.json"
+    prev = []
+    if mpath.is_file():
+        try:
+            prev = [r for r in json.loads(mpath.read_text(encoding="utf-8"))
+                    if r.get("variant") not in set(wanted)]
+        except Exception as e:
+            print(f"  ⚠ 기존 manifest 읽기 실패({e}) — 새로 씀", file=sys.stderr)
+    manifest = prev + manifest
+    manifest.sort(key=lambda r: (r["page"], r["variant"]))
+    mpath.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     src.close()
 
     print(f"  스캔셋: {out}")
