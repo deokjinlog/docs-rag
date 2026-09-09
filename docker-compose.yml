@@ -56,6 +56,13 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: docs-rag-rabbitmq
+    # ⚠ **이게 없으면 컨테이너를 다시 만들 때마다 큐가 통째로 사라진다.**
+    # RabbitMQ 의 노드 이름은 호스트명에서 나오는데(rabbit@<hostname>), Docker 는 기본으로
+    # 컨테이너 ID 를 호스트명으로 준다. 그래서 down/up 마다 **새 노드**가 뜨고, 볼륨 안의
+    # 예전 mnesia 디렉토리는 고아가 된다(실측: 볼륨에 rabbit@... 디렉토리가 여러 개 쌓여 있었다).
+    # 증상은 "볼륨은 있는데 큐와 메시지가 사라짐" — D1 의 프로필 전환(ingest↔ocr)이
+    # 인제스트 체인을 조용히 삼키던 원인이다. 고정 호스트명이면 같은 노드로 복귀한다.
+    hostname: rabbitmq
     profiles: ["serve", "ingest", "ocr", "inspect"]
     mem_limit: 512m        # 실측 idle 152MiB.
                            # inspect 는 큐를 안 쓰지만 api 가 celery_app 을 import 해 broker

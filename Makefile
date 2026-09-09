@@ -147,6 +147,9 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 # ── compose 프로필 (D1) ──────────────────────────────────────────────────────
 # 전 서비스를 함께 띄우면 mem_limit 합계가 WSL 15Gi 를 넘어 스택이 통째로 죽는다(실측 4회).
 # 한 번에 뜨는 조합을 프로필로 못박고 `make mem-budget` 이 합계를 기계로 검증한다.
+down: ## 전 프로필 정지·제거 — ⚠ 그냥 `docker compose down` 은 프로필 서비스를 안 내린다
+	COMPOSE_PROFILES=serve,ingest,ocr,inspect docker compose down --remove-orphans
+
 mem-budget: ## 프로필별 mem_limit 합계 검증 (11Gi 상한, 한도 미설정도 실패)
 	python3 scripts/mem_budget.py
 	python3 scripts/mem_budget.py -f docker-compose.yml -f docker-compose.paddle-gpu.yml

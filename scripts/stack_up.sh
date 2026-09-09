@@ -161,10 +161,19 @@ docker compose exec -T postgres pg_isready -U docsrag -d docsrag >/dev/null 2>&1
   && say "postgres" "${GRN}accepting${NC}" || { say "postgres" "${RED}응답 없음${NC}"; fail=1; }
 curl -sf -m 5 http://localhost:6333/collections >/dev/null 2>&1 \
   && say "qdrant" "${GRN}응답${NC}" || { say "qdrant" "${RED}응답 없음${NC}"; fail=1; }
-curl -sf -m 5 http://localhost:5002/health >/dev/null 2>&1 \
-  && say "odl" "${GRN}응답${NC}" || { say "odl" "${YLW}health 무응답${NC}"; }
-curl -sf -m 5 http://localhost:8002/docs >/dev/null 2>&1 \
-  && say "api" "${GRN}응답${NC}" || { say "api" "${RED}응답 없음${NC}"; fail=1; }
+# 응답 검사도 프로필을 따른다 — 없는 서비스를 "응답 없음"으로 세면 정상 기동이 실패로 보인다
+case "$IN_PROFILE" in *" odl "*)
+  curl -sf -m 5 http://localhost:5002/health >/dev/null 2>&1 \
+    && say "odl" "${GRN}응답${NC}" || { say "odl" "${YLW}health 무응답${NC}"; } ;;
+esac
+case "$IN_PROFILE" in *" paddle "*)
+  curl -sf -m 5 http://localhost:5003/health >/dev/null 2>&1 \
+    && say "paddle" "${GRN}응답${NC}" || { say "paddle" "${RED}응답 없음${NC}"; fail=1; } ;;
+esac
+case "$IN_PROFILE" in *" api "*)
+  curl -sf -m 5 http://localhost:8002/docs >/dev/null 2>&1 \
+    && say "api" "${GRN}응답${NC}" || { say "api" "${RED}응답 없음${NC}"; fail=1; } ;;
+esac
 
 echo "──────────────────────────────────────────────"
 if [ "$fail" -eq 0 ]; then
