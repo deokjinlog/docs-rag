@@ -26,6 +26,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+_RAPIDFUZZ_WARNED = False
 SCANSET = ROOT / "data/eval/scanset"
 
 _WS = re.compile(r"\s+")
@@ -56,7 +57,7 @@ def cer(pred: str, truth: str) -> float:
     return prev[-1] / len(t)
 
 
-def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[float, float]:
+def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[float | None, float | None]:
     """**순서 독립** 인식 품질 — 정답 줄이 예측 어딘가에 있나.
 
     CER 만 보면 안 되는 이유: 정답은 `page.get_text("text")` 가 만든 **PyMuPDF 순서**다.
@@ -65,6 +66,9 @@ def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[fl
     아니라 **두 순서의 차이**다. 그래서 인식 품질은 순서를 빼고 재야 한다.
 
     반환 (recall, 평균유사도): 정답 줄 중 임계 이상으로 매칭된 비율과, 그 매칭들의 평균.
+    rapidfuzz 가 없으면 **(None, None)** — 0.0 을 돌려주면 "OCR 이 줄을 하나도 못 맞췄다"로
+    읽히는 무성 열화가 된다(실측: `python3 scripts/...` 직접 실행 시 전 변형 0.000).
+    측정하려면 `make eval-scanset` 을 쓴다(`--with rapidfuzz`).
     """
     tl = [l.strip() for l in truth.splitlines() if len(l.strip()) >= 4]
     # VL 은 마크다운을 통짜로 준다(파일당 1개) — 줄로 펴야 OCR 과 같은 축에서 비교된다.
@@ -75,7 +79,12 @@ def line_recall(pred_lines: list[str], truth: str, thr: float = 0.7) -> tuple[fl
     try:
         from rapidfuzz import fuzz, process
     except ImportError:
-        return (0.0, 0.0)
+        global _RAPIDFUZZ_WARNED
+        if not _RAPIDFUZZ_WARNED:
+            print("  ⚠ rapidfuzz 없음 → 줄recall/줄유사도 측정 불가(0 아님, 미측정). "
+                  "`make eval-scanset` 으로 실행할 것", file=sys.stderr)
+            _RAPIDFUZZ_WARNED = True
+        return (None, None)
     hits, sims = 0, []
     for t in tl:
         m = process.extractOne(t, pl, scorer=fuzz.ratio)
@@ -232,11 +241,13 @@ def report() -> int:
             ro = [r["cer_ro"] for r in rs if r.get("cer_ro") is not None]
             rom = statistics.median(ro) if ro else None
             gain = f"{statistics.median(cs) - rom:+.3f}" if rom is not None else "—"
-            lr = statistics.median([r.get("lrec", 0) for r in rs])
-            ls = statistics.median([r.get("lsim", 0) for r in rs])
+            lrs = [r["lrec"] for r in rs if r.get("lrec") is not None]
+            lss = [r["lsim"] for r in rs if r.get("lsim") is not None]
+            lr = f"{statistics.median(lrs):.3f}" if lrs else "—"
+            ls = f"{statistics.median(lss):.3f}" if lss else "—"
             tri = statistics.median([r.get("tri", 0) for r in rs])
             best[engine] = -tri          # 판정은 3-gram 으로 — 편향 없는 축
-            print(f"  {variant:<8}{engine:<6}{len(cs):>4}{tri:>9.3f}{lr:>10.3f}{ls:>10.3f}"
+            print(f"  {variant:<8}{engine:<6}{len(cs):>4}{tri:>9.3f}{lr:>10}{ls:>10}"
                   f"{statistics.median(cs):>8.3f}{statistics.mean(r['sec'] for r in rs):>8.1f}")
         if len(best) == 2:
             w = min(best, key=best.get)
@@ -246,7 +257,44 @@ def report() -> int:
     print("\n  3-gram   = 문자 3-gram 겹침(**순서·줄구조 독립**) — 판정 기준")
     print("  줄recall = 정답 줄이 예측에 있나 (줄 단위로 뱉는 OCR 에 유리)")
     print("  CER      = 편집거리/정답길이 (읽기순서를 지키는 VL 에 유리)")
+    _report_vl_gate(rows)
     return 0
+
+
+def _report_vl_gate(rows: list[dict]) -> None:
+    """VL 온전성 게이트가 실제로 무엇을 잡고 무엇을 흘리는지 같은 데이터로 채점한다.
+
+    평균만 보면 게이트의 값어치가 안 보인다 — 게이트가 사는 곳은 **최악값**이다.
+    파국적 실패 1장을 OCR 로 되돌리면 평균은 조금 오르지만 하한이 크게 올라간다.
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from vl_sanity import accept_vl
+
+    ocr_tri = {(r["page"], r["variant"]): r.get("tri", 0.0)
+               for r in rows if r["engine"] == "ocr"}
+    vls = [r for r in rows if r["engine"] == "vl" and r.get("tri") is not None]
+    if not vls:
+        return
+
+    import statistics
+    raw, gated, rejected = [], [], []
+    for r in vls:
+        ok, reason, st = accept_vl(" ".join(r.get("lines") or []))
+        raw.append(r["tri"])
+        if ok:
+            gated.append(r["tri"])
+        else:
+            fallback = ocr_tri.get((r["page"], r["variant"]))
+            gated.append(fallback if fallback is not None else r["tri"])
+            rejected.append((r, reason, st))
+
+    print(f"\n  VL 온전성 게이트 (vl_sanity) — {len(vls)}장 중 {len(rejected)}장 거절")
+    for r, reason, st in rejected:
+        fb = ocr_tri.get((r["page"], r["variant"]))
+        print(f"    p{r['page']}/{r['variant']}  3-gram {r['tri']:.3f} → OCR {fb if fb is None else f'{fb:.3f}'}"
+              f"   {reason}")
+    print(f"    평균  {statistics.mean(raw):.3f} → {statistics.mean(gated):.3f}"
+          f"   ·   최악 {min(raw):.3f} → {min(gated):.3f}   ← 게이트가 사는 곳")
 
 
 def main() -> int:
