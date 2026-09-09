@@ -133,10 +133,59 @@ trace JSONL은 쿼리별 1줄 단위로 `data/eval/trace/YYYYMMDD/`에 append. �
 | vLLM 다운 | /answer만 실패, /retrieve 정상. CRAG 재작성도 불가 | docker compose restart vllm |
 | PostgreSQL 다운 | 전체 영향 | - |
 | RabbitMQ 다운 | 신규 문서 등록 불가, 처리 중 태스크 유실 가능 | restart: unless-stopped. 현재 단일 인스턴스 + durable queue, 클러스터링/HA는 인프라 스케일-업 시 고려 |
+| RabbitMQ **재생성** | 큐·메시지 전량 소실(볼륨이 붙어 있어도) | `hostname: rabbitmq` 로 노드명 고정. 없으면 노드가 `rabbit@<컨테이너ID>` 라 매번 새 노드가 되고 이전 mnesia 는 고아가 된다(실측: 고아 디렉토리 6개) |
 | Worker 다운 | 처리 중단, 큐에 적체 | restart: unless-stopped |
 
 수집/처리/서빙이 RabbitMQ로 분리되어 있어서 한쪽 장애가 다른 쪽을 블로킹하지 않음.
 단, RabbitMQ 자체가 단일 브로커로 전체 파이프라인이 큐에 의존. 장기적으로 quorum queue/클러스터링 고려.
+
+### 메모리 예산 — 프로필로 나눠 쓴다 (D1, 2026-09-09)
+
+전 서비스를 함께 띄운 채 인제스트를 돌리다 **스택이 4회 통째로 죽었다.** 4회차는 커널 OOM
+기록이 없고 postgres 가 exit 0 이었다 — cgroup 한계가 아니라 Docker Desktop/WSL 레벨에서
+내려갔다는 뜻이라, **한도를 올리는 쪽이 아니라 동시에 뜨는 것을 줄이는 쪽**이 답이다.
+
+| 프로필 | 합계 | 구성 | 용도 |
+|---|---|---|---|
+| `serve` | 9.0Gi | api 3 + vllm 4 + infra 2 | `/answer`·`/retrieve` |
+| `ingest` | 8.5Gi | celery 3 + odl 3 + flower .5 + infra 2 | extract→chunk→embed |
+| `ocr` | 10.0Gi | celery-ocr 3 + paddle 5 + infra 2 | OCR 단계(GPU) |
+| `inspect` | 5.0Gi | api 3 + infra 2 | Inspector·Eval Studio(읽기 전용) |
+
+`make mem-budget` 이 compose 에서 합계를 다시 계산해 11Gi 상한을 검증한다. **한도 미설정도
+실패로 센다** — 실제로 postgres·qdrant·rabbitmq 가 무제한이었다.
+
+한도는 실측 기반이다: idle postgres 54MiB · qdrant 110MiB · rabbitmq 152MiB · odl 567MiB ·
+celery 622MiB / 피크 paddle GPU **3.93GiB** · api **2.9GiB**(OOM 기록).
+
+**OCR 이 별도 프로필인 이유**: paddle GPU 를 ingest 에 넣으면 13Gi 로 상한을 넘는다. 캐스케이드상
+OCR 은 별도 티어이기도 하다(페이지의 94.7% 가 NATIVE 라 OCR 을 아예 안 탄다). `task_routes` 가
+`ocr_images` 를 `ocr` 큐로 보내고 `celery-ocr`(concurrency=1)이 소비한다. 워커가 없으면 태스크는
+큐에서 **대기**한다 — 조용히 건너뛰지 않는다. 문서는 21(추출완료)에 머물다 `make ocr` 로 진행된다.
+
+### `.wslconfig` 권고값
+
+현재(2026-09-09 실측):
+
+```ini
+[wsl2]
+swap=16GB
+autoMemoryReclaim=gradual   # memory= 미설정 → WSL 기본 ~15.5GB
+```
+
+권고:
+
+```ini
+[wsl2]
+memory=12GB     # WSL 이 쓸 수 있는 상한을 명시 — 윈도우 쪽에 3GB 이상 남긴다.
+                # 4회 붕괴가 전부 WSL 이 호스트 RAM 을 끝까지 당겨쓴 뒤에 났다.
+swap=8GB        # 16GB 는 과하다. 스왑으로 밀리면 이미 느려서 못 쓰는 상태라
+                # 크게 잡아도 살려주지 못하고 디스크만 먹는다.
+autoMemoryReclaim=gradual
+```
+
+> 적용은 PowerShell `wsl --shutdown` 후 재시작이 필요하고 **모든 WSL 세션이 종료**되므로
+> 사용자가 직접 바꾼다. 프로필 예산(11Gi 상한)은 memory=12GB 를 가정하고 잡은 값이다.
 
 ## 품질 평가 체계
 

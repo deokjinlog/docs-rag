@@ -33,8 +33,21 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
 > 자주 쓰는 명령 alias는 [Makefile](Makefile) 참조. 아래는 각 명령의 옵션·동작 상세.
 
 ```bash
+# 프로필 (D1) — 전 서비스를 함께 띄우면 WSL 15Gi 를 넘겨 스택이 통째로 죽는다(실측 4회).
+# 한 번에 뜨는 조합은 11Gi 이하로 못박혀 있고 `make mem-budget` 이 기계로 검증한다.
+make serve      # 9.0Gi  api·vllm·infra          — /answer·/retrieve
+make ingest     # 8.5Gi  celery·odl·infra        — extract→chunk→embed (OCR 제외)
+make ocr        # 10.0Gi celery-ocr·paddle(GPU)  — ocr 큐만 소비
+make inspect    # 5.0Gi  api·infra               — Inspector·Eval Studio(읽기 전용)
+make down       # ⚠ 그냥 `docker compose down` 은 프로필 서비스를 안 내린다
+make mem-budget # 프로필별 합계 검증 (한도 미설정도 실패)
+
+# 웹서버 없이 등록 (ingest 프로필엔 api 가 없다 — 넣으면 11.5Gi 로 예산 초과)
+docker compose exec celery python -m v1.cli register --service 01 --id X --name "a.pdf" --wait
+#   OCR 이 별도 큐라 ingest 만으로는 21(추출완료)에서 멈춘다 → `make ocr` 로 진행 → 다시 ingest
+
 # 빌드 & 기동
-make up                                         # ★ 평소엔 이것 — 기동 + 마운트 검증 + 자가복구
+make up                                         # ★ 평소엔 이것 — 기동 + 마운트 검증 + 자가복구 (기본 PROFILE=serve)
 docker compose build && docker compose up -d    # 이미지 재빌드가 필요할 때
 docker compose up -d                            # .env 변경 시 (재빌드 불필요)
 
@@ -67,7 +80,8 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | 서비스 | 포트 | GPU | 역할 |
 |--------|------|-----|------|
 | api | 8002 | 0 | FastAPI (검색/RAG) + BGE-M3/Reranker |
-| celery | - | 0 | Celery Worker (extract→ocr→chunk→embed) + BGE-M3/Reranker |
+| celery | - | 0 | Celery Worker (extract→chunk→embed) + BGE-M3/Reranker. **동시성 2** · `-Q celery` |
+| celery-ocr | - | 0 | OCR 단계 전용 워커. **동시성 1** · `-Q ocr` (`ocr` 프로필에서만) |
 | flower | 5555 | - | Celery 모니터링 UI |
 | vllm | 8000 | 0 | Qwen3-4B-AWQ (KV fp8, 8GB 프로파일) — OpenAI 호환 API로 교체 가능 |
 | paddle | 5003 | **GPU 필요** | PP-StructureV3. 기본은 CPU지만 **CPU 추론은 프로세스가 죽는다**(oneDNN/PIR) → `make ocr-gpu` 로 GPU 오버레이. 안 켜면 image 청크가 0개가 된다 |
@@ -76,7 +90,7 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | postgres | **5433**→5432 | - | PostgreSQL (외부 5433, 내부 5432; DB·user=`docsrag`) |
 | qdrant | 6333/6334 | 0 | Qdrant 벡터DB (GPU 인덱싱) |
 
-**GPU 배치 정책**: 단일 GPU(RTX 4060 8GB) — **동시 상주 불가라 프로파일로 나눠 쓴다**(`make answer` vLLM / `make ocr-gpu` paddle / `make ingest-gpu` 임베더). 임베더·리랭커는 평시 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.
+**GPU 배치 정책**: 단일 GPU(RTX 4060 8GB) — **동시 상주 불가라 프로파일로 나눠 쓴다**(`make serve` vLLM / `make ocr` paddle / `make ingest-gpu` 임베더). 임베더·리랭커는 평시 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.
 
 ## 상태 흐름
 ```
@@ -145,7 +159,12 @@ RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로
 - **DB 스키마**: `schema.sql` + `models.py` + `repository.py` + task 파일 동시 수정
 - **상태 관리 CQRS**: `tb_document_status_log`(원본, append-only) + `tb_document_status`(읽기용). `update_status()`가 둘 다 처리
 - **Qdrant payload**: `embed.py` payload + `router.py` 검색/sibling + 컬렉션 재생성
-- **Celery 체인**: `prev_result = {"service_code", "document_id", "document_name"}` 고정
+- **Celery 체인**: `prev_result = {"service_code", "document_id", "document_name"}` 고정.
+  **OCR 은 `ocr` 큐로 라우팅**(`celery_app.task_routes`)되어 `celery-ocr` 만 소비한다 — 라우팅·프로필·
+  워커 `-Q` 셋이 함께 맞아야 한다. 하나만 어긋나면 태스크가 큐에서 영원히 대기하거나(워커 없음)
+  paddle 없이 실행돼 실패한다.
+- **RabbitMQ 노드명**: `hostname: rabbitmq` 필수. 없으면 컨테이너 재생성마다 `rabbit@<컨테이너ID>` 로
+  **새 노드**가 떠서 큐·메시지가 통째로 사라진다(볼륨이 붙어 있어도). 실측: 고아 mnesia 6개.
 - **BM25 이름**: `content-bm25`가 `qdrant.py`/`embed.py`/`router.py` 세 곳. 변경 시 컬렉션 재생성
 - **벡터 1024차원**: `qdrant.py` + BGE-M3. 모델 변경 시 반드시 일치 확인
 - **리랭커 입력 = 임베딩 텍스트 일관성**: 덴스 벡터는 `heading_path + content`로 임베딩(`embed.py` `_embed_text`)하는데 리랭커도 같은 포맷이어야 한다(`search.py` `_rerank_text`). 리랭커만 content-only면 heading 신호(조 제목=도메인 어휘)가 최종 순위에 안 실림 — 실측: 청킹 heading 복구 후에도 recall이 안 움직인 원인이 이 불일치였고, 맞추자 recall@1 0.58→0.83·MRR 0.75→0.92(검색 골든 §9). 한쪽 포맷을 바꾸면 다른 쪽도 같이.
