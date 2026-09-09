@@ -1,0 +1,29 @@
+# paddle OCR 을 GPU 로 — **성능 옵션이 아니라 동작 조건이다.**
+#
+# CPU 추론은 paddle 3.3.1 + paddleocr 3.4.0 조합에서 oneDNN/PIR 실행기 버그로 프로세스가
+# 죽는다(ConvertPirAttribute2RuntimeAttribute, onednn_instruction.cc:116). 요청 하나가
+# 컨테이너를 재시작시키고 ocr.py 의 ThreadPool(4)이 이를 반복해, 코퍼스 image 청크가
+# **0개**였다. 같은 이미지가 GPU 에선 정상 처리된다.
+#
+# LD_LIBRARY_PATH 를 다시 쓰는 이유: 이미지 안 /usr/local/cuda-13.0/compat 의 libcuda(580)가
+# WSL 드라이버(610.74)를 가려 device_count()가 0으로 떨어진다. /usr/lib/wsl/lib 를 **앞에**
+# 놓아야 호스트 드라이버가 잡힌다(docs/troubleshooting-boot.md).
+#
+# GPU 는 8GB 한 장이라 vLLM 과 공존 못 한다 → `make ocr-gpu` 가 vLLM 을 내리고 켠다.
+#
+# 적용:  docker compose -f docker-compose.yml -f docker-compose.paddle-gpu.yml up -d paddle
+# 반납:  docker compose up -d paddle        (오버레이 없이 재생성 → CPU 로 복귀)
+services:
+  paddle:
+    mem_limit: 6g          # GPU 경로는 호스트 RAM 도 더 쓴다(모델 스테이징). CPU 3g 로는 OOM
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      PADDLE_DEVICE: "gpu:0"
+      LD_LIBRARY_PATH: "/usr/lib/wsl/lib:/usr/local/cuda-13.0/targets/x86_64-linux/lib"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

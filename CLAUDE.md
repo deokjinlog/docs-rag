@@ -70,13 +70,13 @@ OPENAI_API_KEY=sk-... uv run python scripts/eval_ragas.py --submit-feedback   # 
 | celery | - | 0 | Celery Worker (extract→ocr→chunk→embed) + BGE-M3/Reranker |
 | flower | 5555 | - | Celery 모니터링 UI |
 | vllm | 8000 | 0 | Qwen3-4B-AWQ (KV fp8, 8GB 프로파일) — OpenAI 호환 API로 교체 가능 |
-| paddle | 5003 | **CPU** | PP-StructureV3 (Blackwell sm_120 미지원으로 CPU 고정) |
+| paddle | 5003 | **GPU 필요** | PP-StructureV3. 기본은 CPU지만 **CPU 추론은 프로세스가 죽는다**(oneDNN/PIR) → `make ocr-gpu` 로 GPU 오버레이. 안 켜면 image 청크가 0개가 된다 |
 | odl | 5002 | - | PDF→Markdown 변환 (FastAPI 래퍼:5002 + docling-fast:5010) |
 | rabbitmq | 5672/15672 | - | 메시지 큐 |
 | postgres | **5433**→5432 | - | PostgreSQL (외부 5433, 내부 5432; DB·user=`docsrag`) |
 | qdrant | 6333/6334 | 0 | Qdrant 벡터DB (GPU 인덱싱) |
 
-**GPU 배치 정책**: 단일 GPU(RTX 4060 8GB). 임베더·리랭커는 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.
+**GPU 배치 정책**: 단일 GPU(RTX 4060 8GB) — **동시 상주 불가라 프로파일로 나눠 쓴다**(`make answer` vLLM / `make ocr-gpu` paddle / `make ingest-gpu` 임베더). 임베더·리랭커는 평시 CPU 오프로드(`CUDA_VISIBLE_DEVICES=-1`)라 GPU는 vLLM 독점. vLLM `--gpu-memory-utilization 0.80` + `--max-model-len 8192` (Qwen3-4B는 가중치가 작아 KV 캐시 여유 충분). Qdrant 인덱싱만 GPU 공유.
 
 ## 상태 흐름
 ```

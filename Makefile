@@ -148,6 +148,11 @@ lite: ## 경량(~2GB) — vLLM·paddle·odl 중지. 검색/관계형/make check/
 	docker compose stop vllm paddle odl
 	@$(MAKE) --no-print-directory mem
 
+ocr-gpu: ## 이미지 OCR을 GPU로 — 성능 옵션이 아니라 **동작 조건**(CPU 추론은 컨테이너가 죽어 image 청크가 0개였다)
+	docker compose -f docker-compose.yml -f docker-compose.paddle-gpu.yml up -d --force-recreate paddle
+	docker compose stop vllm 2>/dev/null || true
+	@echo "→ paddle GPU. 색인 후 'docker compose up -d paddle'로 CPU 복귀(GPU 반납)"
+
 ingest-gpu: ## 색인 가속 — 임베더를 GPU로(ingest 모드 GPU 놀 때 10~50배). 끝나면 `docker compose up -d celery`로 CPU 복귀
 	docker compose -f docker-compose.yml -f docker-compose.ingest-gpu.yml up -d celery
 	docker compose stop vllm 2>/dev/null || true

@@ -2,7 +2,10 @@
 
 이미지 파일을 받아 레이아웃 분석 + 표 + 수식 + OCR을 수행하고,
 콘텐츠 블록을 chunk_type 기준(drop/table/text)으로 분류해 반환한다.
-Blackwell sm_120 미지원으로 CPU 고정 (Paddle 3.4+ 지원 시 device='gpu'로 토글).
+디바이스는 env `PADDLE_DEVICE` (기본 cpu, GPU 는 `docker-compose.paddle-gpu.yml` 오버레이).
+**CPU 는 동작하는 기본값이 아니다** — oneDNN/PIR 버그로 추론 시 프로세스가 죽는다.
+(과거 주석의 'Blackwell sm_120 미지원' 은 다른 머신 이야기였고, 이 머신 RTX 4060 에선
+ 원인이 CUDA compat 라이브러리가 WSL 드라이버를 가린 것이었다.)
 """
 
 from __future__ import annotations
@@ -49,11 +52,26 @@ LAYOUT_MIN_SCORE = 0.5   # layout detector 박스 confidence 컷
 REC_MIN_SCORE = 0.5      # 개별 텍스트 라인 OCR confidence 컷
 
 
+# 실행 디바이스 — 기본은 CPU(오버레이 없이 뜨는 구성). GPU 는 오버레이가 켠다:
+#   docker compose -f docker-compose.yml -f docker-compose.paddle-gpu.yml up -d paddle
+#
+# ⚠ **CPU 는 안전한 기본값이 아니다.** 실측(2026-09-08~09): paddle 3.3.1 + paddleocr 3.4.0
+# 조합에서 CPU 추론이 oneDNN/PIR 실행기 버그로 **프로세스째 죽는다**
+#   NotImplementedError: ConvertPirAttribute2RuntimeAttribute
+#   not support [pir::ArrayAttribute<pir::DoubleAttribute>]  (onednn_instruction.cc:116)
+# 요청 하나가 컨테이너를 재시작시키고, ocr.py 의 ThreadPool(4)가 이를 반복한다.
+# 그 결과 코퍼스 image 청크가 **0개**였다(text 7,882 · table 851 · image 0).
+# GPU 경로는 같은 이미지에서 정상 동작한다 — "OCR 이 고장났다"가 아니라 "CPU 로 돌려서
+# 고장났다"가 정확한 진단이다. 그래서 부팅 시 어느 쪽인지 로그에 명시적으로 남긴다.
+DEVICE = os.environ.get("PADDLE_DEVICE", "cpu").strip() or "cpu"
+
+
 def _get_engine():
     """PPStructureV3 엔진 싱글톤 (double-checked locking).
 
-    Why CPU + mkldnn OFF: Blackwell GPU는 Paddle 3.3.1에서 초기화 실패, mkldnn 경로는
-    PIR과 호환 안 되는 op가 남아있어 NotImplementedError로 터진다. env + 생성자 둘 다 OFF.
+    mkldnn 은 **CPU 경로에서만** 의미가 있고, 그 경로가 위 버그의 발원지다. GPU 일 땐
+    끄고 말고 할 대상이 아니라서 건드리지 않는다(끄는 호출 자체가 GPU predictor 구성에
+    불필요한 간섭).
     """
     global _engine
     if _engine is not None:     # fast path — 이미 준비됨, 락 없이 바로 return
@@ -61,19 +79,38 @@ def _get_engine():
     with _engine_lock:          # 첫 호출만 락 잡음. 나머지 동시 요청은 여기서 대기
         if _engine is None:     # 락 획득 시점엔 다른 스레드가 먼저 만들었을 수 있음 → 재확인
             import paddle
-            try:
-                paddle.set_flags({"FLAGS_use_mkldnn": False})
-            except Exception as e:
-                logger.warning(f"[engine] paddle.set_flags 실패: {e}")
+            on_cpu = DEVICE.startswith("cpu")
+            if on_cpu:
+                try:
+                    paddle.set_flags({"FLAGS_use_mkldnn": False})
+                except Exception as e:
+                    logger.warning(f"[engine] paddle.set_flags 실패: {e}")
+            else:
+                # GPU 를 요청했는데 실제로 못 잡으면 **조용히 CPU 로 흘러가면 안 된다** —
+                # 그건 컨테이너가 죽는 경로다. 여기서 시끄럽게 실패시켜 원인을 드러낸다.
+                # (실측 원인 1위: LD_LIBRARY_PATH 의 cuda compat 이 WSL 드라이버를 가림.
+                #  오버레이가 /usr/lib/wsl/lib 를 앞에 붙이는 이유 — troubleshooting-boot.md)
+                if paddle.device.cuda.device_count() < 1:
+                    raise RuntimeError(
+                        f"PADDLE_DEVICE={DEVICE} 인데 CUDA 디바이스가 0개다. "
+                        "LD_LIBRARY_PATH 에 /usr/lib/wsl/lib 가 앞에 오는지 확인할 것"
+                    )
+                paddle.set_device(DEVICE)
             from paddleocr import PPStructureV3
-            _engine = PPStructureV3(
+            kwargs = dict(
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 lang="korean",
-                device="cpu",
-                enable_mkldnn=False,
+                device=DEVICE,
             )
-            logger.info("PPStructureV3 초기화 완료 (CPU, layout+table+formula+OCR)")
+            if on_cpu:
+                kwargs["enable_mkldnn"] = False
+            _engine = PPStructureV3(**kwargs)
+            logger.info(
+                f"PPStructureV3 초기화 완료 ({DEVICE}, layout+table+formula+OCR)"
+                + ("  ⚠ CPU 추론은 oneDNN/PIR 버그로 죽는다 — paddle-gpu 오버레이 권장"
+                   if on_cpu else "")
+            )
         return _engine
 
 
