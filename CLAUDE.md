@@ -61,6 +61,9 @@ docker compose logs --tail=20 api               # 최근 20줄
 docker compose ps                               # 서비스 상태
 
 # DB (host에 psql 없으면 컨테이너 경유)
+# schema.sql 은 **비파괴**(CREATE IF NOT EXISTS + ALTER ADD COLUMN IF NOT EXISTS)라 언제 돌려도 안전.
+# ⚠ 초기화는 db/schema_reset.sql 을 **명시적으로** 실행해야만 된다 — 예전엔 schema.sql 안에
+#    DROP TABLE 이 있어서 이 명령 한 줄로 문서 26·청크 8,850 이 날아갔다(2026-09-10).
 cat db/schema.sql | docker compose exec -T postgres psql -U docsrag -d docsrag
 docker compose exec postgres psql -U docsrag -d docsrag -c "\d tb_query_feedback"
 

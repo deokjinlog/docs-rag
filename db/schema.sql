@@ -1,17 +1,15 @@
 -- ============================================================
--- docs-rag 테이블 DDL
--- 실행 전 기존 테이블 백업 필수.
+-- docs-rag 테이블 DDL — **비파괴**. 언제 실행해도 데이터를 지우지 않는다.
+--
+-- 예전엔 이 파일 맨 앞에 DROP TABLE 8줄이 있었다. `docker-entrypoint-initdb.d` 로는
+-- 빈 DB 에서만 도니 무해했지만, CLAUDE.md 가 안내하는 대로 손으로
+--     cat db/schema.sql | docker compose exec -T postgres psql ...
+-- 를 돌리면 **문서 테이블이 통째로 날아간다**. 2026-09-10 에 실제로 그렇게 날렸다
+-- (문서 26 · 청크 8,850). 다행히 Qdrant payload 와 디스크 raw 로 전량 복구했지만,
+-- "주석으로 경고했으니 괜찮다"는 안전장치가 아니라는 게 요점이다.
+--
+-- 초기화가 정말 필요하면 **db/schema_reset.sql** 을 명시적으로 실행한다.
 -- ============================================================
-
--- 기존 테이블 제거 (의존성 역순)
-DROP TABLE IF EXISTS tb_query_feedback;
-DROP TABLE IF EXISTS tb_document_contents;
-DROP TABLE IF EXISTS tb_document_chunks;
-DROP TABLE IF EXISTS tb_document_extract;
-DROP TABLE IF EXISTS tb_document_status;
-DROP TABLE IF EXISTS tb_document_status_log;
-DROP TABLE IF EXISTS tb_code_master;
-DROP TABLE IF EXISTS tb_service_code;
 
 
 -- ============================================================
@@ -288,3 +286,57 @@ INSERT INTO tb_code_master (code, code_name) VALUES
     ('96', '에러(임베딩/벡터DB적재)'),
     ('99', '에러(기타)')
 ON CONFLICT (code) DO NOTHING;
+
+
+-- ============================================================
+-- 9. 페이지 판별 (triage)
+--    extract 직전에 페이지마다 규칙으로 경로를 정하고 그 근거를 남긴다.
+--    **왜 저장하나**: 판정은 재현 가능한 규칙이지만, "왜 이 페이지가 OCR 로 갔나"를
+--    나중에 답하려면 그때의 신호값이 있어야 한다. 임계치를 바꿀 때 재처리 없이
+--    dry-run 으로 분포 변화를 보는 것도 이 표가 있어야 된다.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tb_page_triage (
+    id              BIGSERIAL PRIMARY KEY,
+    service_code    VARCHAR(2) NOT NULL,
+    document_id     VARCHAR(255) NOT NULL,
+    page_no         INT NOT NULL,
+    route           VARCHAR(20) NOT NULL,
+    char_count      INT,
+    garbage_ratio   NUMERIC(6,4),
+    separator_ratio NUMERIC(6,4),
+    image_cover     NUMERIC(5,3),
+    anchor_hits     INT,
+    font_flags      JSONB,
+    conf_stats      JSONB,
+    source          VARCHAR(16) NOT NULL,
+    decided_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_page_triage UNIQUE (service_code, document_id, page_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_page_triage_doc ON tb_page_triage(service_code, document_id);
+CREATE INDEX IF NOT EXISTS idx_page_triage_route ON tb_page_triage(route);
+
+COMMENT ON TABLE tb_page_triage IS '페이지 단위 라우팅 판정 + 근거 신호 (extract 직전)';
+COMMENT ON COLUMN tb_page_triage.route IS 'NATIVE | NATIVE_SUSPECT | SCAN — 3값. SCAN 을 SIMPLE/COMPLEX 로 안 가르는 이유는 PP-StructureV3 가 레이아웃을 포함하기 때문';
+COMMENT ON COLUMN tb_page_triage.garbage_ratio IS 'U+FFFD·분리자모 비율. \x01~\x08 은 제외 — 이 코퍼스에선 단어 구분자 대용이라 38%p 를 오탐시켰다';
+COMMENT ON COLUMN tb_page_triage.separator_ratio IS '\x01~\x08 비율. 손상이 아니라 정규화(공백 치환) 대상임을 표시';
+COMMENT ON COLUMN tb_page_triage.anchor_hits IS '제N조·①·가. 매칭 수. 0인데 char_count 정상이면 오인식 의심 → VL 격상 입력';
+COMMENT ON COLUMN tb_page_triage.font_flags IS 'no_tounicode·type3. 단독으로는 의심하지 않는다(멀쩡한 문서에서 자주 뜬다)';
+COMMENT ON COLUMN tb_page_triage.conf_stats IS 'OCR 줄 confidence 원본 분포 {n, mean, lt80_ratio, cut}. 컷 통과분만 보면 못 만든다';
+COMMENT ON COLUMN tb_page_triage.source IS 'pymupdf(신규·정확) | odl_tree(백필·파생, rotation·폰트 없음)';
+
+
+-- ============================================================
+-- 10. 원본 추적 (tb_document_extract 확장)
+--     document_path 는 **등록 시점** 경로라 stale 하다 — extract 가 처리 후 파일을
+--     data/finished 로 옮기기 때문. 그래서 "원본이 없다"는 오진이 실제로 났다.
+--     해석된 경로와 내용 지문을 따로 남긴다. sha256 은 재등록 중복 색인을 막는 키.
+-- ============================================================
+ALTER TABLE tb_document_extract ADD COLUMN IF NOT EXISTS sha256 VARCHAR(64);
+ALTER TABLE tb_document_extract ADD COLUMN IF NOT EXISTS source_path_resolved VARCHAR(500);
+ALTER TABLE tb_document_extract ADD COLUMN IF NOT EXISTS source_stage VARCHAR(16);
+CREATE INDEX IF NOT EXISTS idx_extract_sha256 ON tb_document_extract(sha256);
+
+COMMENT ON COLUMN tb_document_extract.sha256 IS '원본 파일 내용 지문. 이름이 달라도 같은 문서면 같은 값';
+COMMENT ON COLUMN tb_document_extract.source_path_resolved IS 'resolve_source 결과 — 실제로 파일이 있는 경로';
+COMMENT ON COLUMN tb_document_extract.source_stage IS 'input | finished | error — 파이프라인 어느 단계에 있나';

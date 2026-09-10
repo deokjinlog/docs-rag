@@ -87,8 +87,24 @@ def gate(doc: str) -> list:
     return rows
 
 
+# 이 게이트가 재는 것은 **보험 약관의 전처리 품질**이다(조 1..N 연속, 조 개수 5~60 …).
+# 약관이 아닌 문서를 같은 자로 재면 당연히 FAIL 이 나는데, 그건 품질 문제가 아니라
+# **자를 잘못 댄 것**이다. 실제로 벤치 재료로 빌려온 관악구 고시 14건이 raw 에 들어오면서
+# 배포 게이트가 통째로 빨개졌다(조 0개 — 공고문엔 제N조 구조가 없다).
+#
+# 그래서 범위를 명시한다. 조용히 건너뛰지 않고 **몇 건을 왜 뺐는지 출력**한다 —
+# 이 프로젝트에서 무언가가 소리 없이 사라지는 건 늘 사고의 시작이었다.
+# 관악구 고시는 파일명이 `<5자리 접수번호>_` 로 시작한다(아카이브 명명 규칙).
+BENCH_ONLY = re.compile(r"^\d{5}_")
+
+
 def main():
-    docs = sorted(os.path.basename(p)[:-3] for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")))
+    all_docs = sorted(os.path.basename(p)[:-3] for p in glob.glob(os.path.join(HERE, "..", "data/output/raw/*.md")))
+    docs = [d for d in all_docs if not BENCH_ONLY.match(d)]
+    skipped = [d for d in all_docs if BENCH_ONLY.match(d)]
+    if skipped:
+        print(f"  ℹ 범위 밖 {len(skipped)}건 제외 (약관 아님 — 벤치 재료): "
+              f"{', '.join(d[:18] for d in skipped[:4])}{' …' if len(skipped) > 4 else ''}")
     grand = {"PASS": 0, "WARN": 0, "FAIL": 0}
     for doc in docs:
         rows = gate(doc)
