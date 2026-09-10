@@ -38,7 +38,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.7342,
+    "article_order": 0.7436,
     "table_diff_median": 0,
     "table_diff_max": 5,
     "sparse_pages": [
@@ -55,7 +55,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.6381,
+    "article_order": 0.6342,
     "table_diff_median": 0.0,
     "table_diff_max": 7,
     "sparse_pages": [],
@@ -70,7 +70,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.7057,
+    "article_order": 0.7086,
     "table_diff_median": 1,
     "table_diff_max": 15,
     "sparse_pages": [
@@ -87,7 +87,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.7092,
+    "article_order": 0.7274,
     "table_diff_median": 0.0,
     "table_diff_max": 9,
     "sparse_pages": [
@@ -107,7 +107,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.6737,
+    "article_order": 0.6963,
     "table_diff_median": 0,
     "table_diff_max": 6,
     "sparse_pages": [
@@ -127,7 +127,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.7144,
+    "article_order": 0.7269,
     "table_diff_median": 0.0,
     "table_diff_max": 3,
     "sparse_pages": [
@@ -142,14 +142,10 @@
     "char_cov_median": 0.974,
     "char_cov_min": 0.7461,
     "char_cov_p10": 0.9,
-    "anchor_coverage": 0.9032,
-    "anchor_missing": [
-      6,
-      38,
-      39
-    ],
-    "anchor_missing_n": 3,
-    "article_order": 0.6325,
+    "anchor_coverage": 1.0,
+    "anchor_missing": [],
+    "anchor_missing_n": 0,
+    "article_order": 0.5652,
     "table_diff_median": 1.0,
     "table_diff_max": 5,
     "sparse_pages": [
@@ -166,7 +162,7 @@
     "anchor_coverage": 1.0,
     "anchor_missing": [],
     "anchor_missing_n": 0,
-    "article_order": 0.6989,
+    "article_order": 0.7105,
     "table_diff_median": 1.0,
     "table_diff_max": 5,
     "sparse_pages": [],

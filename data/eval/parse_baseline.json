@@ -1,0 +1,34 @@
+{
+  "measured": "2026-09-10",
+  "git_sha": "e229925",
+  "thresholds": {
+    "anchor_missing_max": 0,
+    "char_cov_median_min": 0.99,
+    "char_cov_min_warn": 0.79
+  },
+  "verdicts": {
+    "R01": "PASS",
+    "R02": "PASS",
+    "R04": "PASS",
+    "R05": "PASS",
+    "R06": "PASS",
+    "R07": "PASS",
+    "R08": "PASS",
+    "R09": "PASS",
+    "R10": "FAIL",
+    "R11": "PASS",
+    "SCALE_21012": "PASS",
+    "SCALE_21083": "PASS",
+    "SCALE_21084": "PASS",
+    "SCALE_21085": "PASS",
+    "SCALE_21086": "WARN",
+    "SCALE_21087": "PASS",
+    "SCALE_21088": "PASS",
+    "SCALE_21089": "PASS",
+    "SCALE_21090": "PASS",
+    "SCALE_21091": "PASS",
+    "SCALE_21092": "WARN",
+    "SCALE_21093": "PASS"
+  },
+  "note": "알려진 상태. 이보다 나빠지면 회귀. R10 은 조판 장식(목차 점선·세로 탭·머리글) 비중이 커서 FAIL 로 고정 — 본문 손실 여부는 V2 에서 조사."
+}

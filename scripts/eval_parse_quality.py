@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import os
 import pathlib
 import re
 import statistics as st
@@ -40,6 +41,24 @@ sys.path.insert(0, str(ROOT / "src"))
 
 # 벤치 재료(고시·공고문) — 약관 규칙의 대상이 아니다. raw_bench 분리와 같은 기준.
 BENCH_DOCS = {"B005", "D14101", "D14102", "D14103"}
+
+# ── 게이트 임계 ───────────────────────────────────────────────────────────────
+# **전부 코퍼스 분포의 빈 구간에 앉혔다.** 칼날 위가 아니라는 뜻이고, 그게 이 값들을
+# 믿는 근거다. 지시서 초안(char_coverage 최솟값 < 0.9)은 22문서 중 20개를 실패시켰는데,
+# 원인이 임계가 아니라 지표였다(조판 중복을 파싱 손실로 셌다 — unique_chars 주석).
+THRESHOLDS = {
+    # 조가 통째로 사라진 건 명백한 파손이다. 외부 법령 인용을 제외하고 재면
+    # **현재 코퍼스 22/22 가 누락 0** — 지금은 안 울리고 깨지면 울리는, 게이트의 이상적 형태.
+    "anchor_missing_max": 0,
+    # 빈 구간 0.974(R10) → 0.996. 문서 전체가 얇아진 경우를 잡는다.
+    "char_cov_median_min": 0.99,
+    # 빈 구간 0.752 → 0.828. 페이지 단위 국소 손실은 문서 파손과 다르므로 WARN.
+    "char_cov_min_warn": 0.79,
+    # ⚠ article_order·sparse·table_diff 는 **임계를 두지 않는다.** 분포에 빈 구간이 없다
+    #   (article_order 0.632~0.761 연속) — 특약마다 제1조부터 다시 시작하는 약관 구조에서
+    #   오름차순이 깨지는 게 정상이기 때문. 절대 임계로 쓰면 전 문서가 걸리거나 아무도
+    #   안 걸린다. 기준선 대비 **하락**만 본다(그래서 run 을 저장한다).
+}
 
 _SEP = re.compile(r"[\x01-\x08]")
 _WS = re.compile(r"\s+")
@@ -84,12 +103,26 @@ def unique_chars(pdf_text: str) -> int:
     return total
 
 
+def _strip_citations(s: str) -> str:
+    """외부 법령 인용 구간을 지운 텍스트. 구조 표지만 남긴다(위 _JO_CITATION 주석).
+
+    ⚠ **정규화를 먼저 해야 한다.** 이 코퍼스는 법령명 안에도 \x01 구분자가 들어간다
+    ("「신용정보의\x01 이용\x01 및\x01 보호에\x01 관한\x01 법률」제35조"). 원문 그대로
+    정규식을 대면 PDF 쪽에서만 매칭되고 ODL 쪽에서는 안 돼서, **양쪽을 비대칭으로 지운다**.
+    그러면 멀쩡한 인용이 '누락된 조'로 둔갑한다 — 실제로 R11 이 그렇게 13조 누락으로
+    잡혔고, 열어보니 셋 다 ODL 에 멀쩡히 있는 인용이었다.
+    """
+    t = _SEP.sub(" ", s or "")
+    t = re.sub(r"[ \t]+", " ", t)
+    return _JO_CITATION.sub(" ", t)
+
+
 def jo_set(s: str) -> set[int]:
-    return {int(m.group(1)) for m in _JO.finditer(s or "")}
+    return {int(m.group(1)) for m in _JO.finditer(_strip_citations(s))}
 
 
 def jo_seq(s: str) -> list[int]:
-    return [int(m.group(1)) for m in _JO.finditer(s or "")]
+    return [int(m.group(1)) for m in _JO.finditer(_strip_citations(s))]
 
 
 def page_metrics(doc_id: str, raw_json, pdf_path: pathlib.Path) -> tuple[list[dict], dict]:
@@ -165,11 +198,124 @@ def page_metrics(doc_id: str, raw_json, pdf_path: pathlib.Path) -> tuple[list[di
     return rows, summary
 
 
+def _verdict(s: dict) -> tuple[str, list[str]]:
+    """문서 하나의 판정. 사유를 함께 돌려준다 — 숫자만 보고는 왜 걸렸는지 모른다."""
+    t, why = THRESHOLDS, []
+    if s["anchor_missing_n"] > t["anchor_missing_max"]:
+        why.append(f"조 누락 {s['anchor_missing_n']} ({s['anchor_missing'][:5]})")
+    if s["char_cov_median"] is not None and s["char_cov_median"] < t["char_cov_median_min"]:
+        why.append(f"글자 커버리지 중앙 {s['char_cov_median']} < {t['char_cov_median_min']}")
+    if why:
+        return "FAIL", why
+    if s["char_cov_min"] is not None and s["char_cov_min"] < t["char_cov_min_warn"]:
+        return "WARN", [f"최저 페이지 커버리지 {s['char_cov_min']} < {t['char_cov_min_warn']}"]
+    return "PASS", []
+
+
+BASELINE = ROOT / "data" / "eval" / "parse_baseline.json"
+
+
+def _gate(out: list[dict], update_baseline: bool = False) -> int:
+    """임계 적용 + tb_eval_run 저장. **기준선 대비 회귀**면 exit 1.
+
+    ⚠ 절대 판정으로 차단하면 안 된다. 지금 코퍼스엔 R10 하나가 FAIL 인데, 열어보니 누락의
+    대부분이 목차 점선·세로 탭·머리글 같은 **조판 장식**이다(본문도 일부 섞여 있어 조사 대상).
+    이걸 이유로 게이트를 영구 적색으로 두면 사람이 습관적으로 무시하게 되고, 그건 게이트가
+    없는 것보다 나쁘다 — 파괴적 명령 훅에서 `docker compose down` 을 뺀 것과 같은 판단.
+    이 프로젝트의 다른 게이트(retrieval_baseline·routing_semantic_baseline)와 같은 규율로,
+    **알려진 상태를 기준선에 고정하고 그보다 나빠질 때만** 막는다.
+    """
+    import subprocess
+    import uuid
+
+    from sqlalchemy import text
+
+    from v1.config import task_session
+
+    counts = {"PASS": 0, "WARN": 0, "FAIL": 0}
+    items = []
+    for s in out:
+        v, why = _verdict(s)
+        counts[v] += 1
+        items.append((s["doc"], v, why, s))
+        icon = {"PASS": "✅", "WARN": "⚠", "FAIL": "❌"}[v]
+        note = ("  ← " + " · ".join(why)) if why else ""
+        print(f"  {icon} {s['doc']:<14}cov중앙 {s['char_cov_median']} · 최저 {s['char_cov_min']} · "
+              f"조누락 {s['anchor_missing_n']}{note}")
+
+    # 컨테이너 안에는 git 이 없다 → Makefile 이 GIT_SHA 로 넘긴다. 없으면 None 으로 두되
+    # **추측하지 않는다** — 어느 코드로 잰 값인지 모르면 두 run 의 차이를 해석할 수 없다.
+    sha = os.environ.get("GIT_SHA") or None
+    if not sha:
+        try:
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                                 text=True, cwd=ROOT).stdout.strip() or None
+        except FileNotFoundError:
+            sha = None
+    run_id = f"parse-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    summary = {"docs": len(out), **counts,
+               "char_cov_median_min": min((s["char_cov_median"] for s in out
+                                           if s["char_cov_median"] is not None), default=None),
+               "anchor_missing_total": sum(s["anchor_missing_n"] for s in out)}
+    with task_session() as db:
+        db.execute(text("INSERT INTO tb_eval_run (run_id, kind, git_sha, config_json, summary_json) "
+                        "VALUES (:r,'parse',:g,CAST(:c AS JSONB),CAST(:s AS JSONB))"),
+                   {"r": run_id, "g": sha,
+                    "c": json.dumps(THRESHOLDS), "s": json.dumps(summary, ensure_ascii=False)})
+        for doc, v, why, s in items:
+            db.execute(text("INSERT INTO tb_eval_item (run_id, item_id, scores_json, detail_json) "
+                            "VALUES (:r,:i,CAST(:sc AS JSONB),CAST(:d AS JSONB))"),
+                       {"r": run_id, "i": doc,
+                        "sc": json.dumps({k: s[k] for k in
+                                          ("char_cov_median", "char_cov_min", "anchor_coverage",
+                                           "article_order", "table_diff_max", "sparse_n")}),
+                        "d": json.dumps({"verdict": v, "why": why,
+                                         "anchor_missing": s["anchor_missing"],
+                                         "sparse_pages": s["sparse_pages"]}, ensure_ascii=False)})
+        db.commit()
+
+    print(f"\n  run {run_id} (git {sha}) 저장")
+    print(f"  PASS {counts['PASS']} · WARN {counts['WARN']} · FAIL {counts['FAIL']}")
+
+    cur = {doc: v for doc, v, _why, _s in items}
+    if update_baseline:
+        BASELINE.parent.mkdir(parents=True, exist_ok=True)
+        BASELINE.write_text(json.dumps(
+            {"measured": time.strftime("%Y-%m-%d"), "git_sha": sha,
+             "thresholds": THRESHOLDS, "verdicts": cur,
+             "note": "알려진 상태. 이보다 나빠지면 회귀. R10 은 조판 장식(목차 점선·세로 탭·"
+                     "머리글) 비중이 커서 FAIL 로 고정 — 본문 손실 여부는 V2 에서 조사."},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"  기준선 고정 → {BASELINE.name}")
+        return 0
+
+    if not BASELINE.is_file():
+        print("  ⚠ 기준선 없음 — `--update-baseline` 으로 먼저 고정할 것(차단하지 않음)")
+        return 0
+
+    base = json.loads(BASELINE.read_text(encoding="utf-8"))["verdicts"]
+    rank = {"PASS": 0, "WARN": 1, "FAIL": 2}
+    worse = [(d, base.get(d, "PASS"), v) for d, v in cur.items()
+             if rank[v] > rank.get(base.get(d, "PASS"), 0)]
+    new_doc = [d for d in cur if d not in base]
+    if new_doc:
+        print(f"  ℹ 기준선에 없는 신규 문서 {len(new_doc)}건: {', '.join(new_doc[:5])}")
+    if worse:
+        for d, b, v in worse:
+            print(f"  ❌ 회귀 {d}: {b} → {v}")
+        print("  → 배포 차단 (exit 1)")
+        return 1
+    print("  ✅ 기준선 대비 회귀 없음")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--distribution", action="store_true")
     ap.add_argument("--doc")
     ap.add_argument("--out", default="data/eval/parse_quality.json")
+    ap.add_argument("--gate", action="store_true", help="임계 적용 + tb_eval_run 저장, 회귀 시 exit 1")
+    ap.add_argument("--update-baseline", action="store_true", help="현재 판정을 기준선으로 고정")
     a = ap.parse_args()
 
     from sqlalchemy import text
@@ -211,6 +357,9 @@ def main() -> int:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n  {time.time() - t0:.0f}초 · → {p}", flush=True)
+
+    if a.gate or a.update_baseline:
+        return _gate(out, update_baseline=a.update_baseline)
 
     if a.distribution and out:
         print("\n── 코퍼스 분포 (임계 정하기 전에 보는 것) ──")

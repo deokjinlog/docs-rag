@@ -340,3 +340,35 @@ CREATE INDEX IF NOT EXISTS idx_extract_sha256 ON tb_document_extract(sha256);
 COMMENT ON COLUMN tb_document_extract.sha256 IS '원본 파일 내용 지문. 이름이 달라도 같은 문서면 같은 값';
 COMMENT ON COLUMN tb_document_extract.source_path_resolved IS 'resolve_source 결과 — 실제로 파일이 있는 경로';
 COMMENT ON COLUMN tb_document_extract.source_stage IS 'input | finished | error — 파이프라인 어느 단계에 있나';
+
+
+-- ============================================================
+-- 11. 평가 run (파싱·검색·RAGAS 공용)
+--     화면과 회귀 판정은 **파일이 아니라 DB** 를 읽는다. 파일(json)은 보관용.
+--     같은 지표를 두 곳에서 읽으면 반드시 갈라지기 때문.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS tb_eval_run (
+    run_id           VARCHAR(64) PRIMARY KEY,
+    kind             VARCHAR(20) NOT NULL,      -- parse | retrieval | ragas
+    pipeline_version VARCHAR(40),
+    git_sha          VARCHAR(40),
+    config_json      JSONB,
+    summary_json     JSONB,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tb_eval_item (
+    id           BIGSERIAL PRIMARY KEY,
+    run_id       VARCHAR(64) NOT NULL,
+    item_id      VARCHAR(255) NOT NULL,
+    scores_json  JSONB,
+    detail_json  JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_run_kind ON tb_eval_run(kind, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_eval_item_run ON tb_eval_item(run_id);
+
+COMMENT ON TABLE tb_eval_run IS '평가 실행 1건 = 1행. 지표 비교·회귀 판정의 단위';
+COMMENT ON COLUMN tb_eval_run.git_sha IS '어느 코드로 잰 값인가 — 이게 없으면 두 run 의 차이가 코드 변경 탓인지 데이터 탓인지 못 가린다';
+COMMENT ON COLUMN tb_eval_run.config_json IS '임계치·설정 스냅샷. 임계를 바꾸면 과거 run 과 직접 비교하면 안 된다';
+COMMENT ON TABLE tb_eval_item IS 'run 안의 개별 항목(문서·문항). 드릴다운과 두 run 간 diff 의 단위';

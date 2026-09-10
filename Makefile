@@ -176,6 +176,19 @@ db-restore: ## 최신 백업으로 복원 (data/backup 의 가장 최근 .sql)
 down: ## 전 프로필 정지·제거 — ⚠ 그냥 `docker compose down` 은 프로필 서비스를 안 내린다
 	COMPOSE_PROFILES=serve,ingest,ocr,inspect docker compose down --remove-orphans
 
+eval-parse: ## V1 파싱 불변 조건 게이트 — 조 보존·글자 커버리지. run 을 tb_eval_run 에 저장
+	@# 컨테이너에 git 이 없어서 SHA 를 넘긴다 — run 이 '어느 코드로 잰 값'인지 남아야
+	@# 두 run 의 차이가 코드 변경 탓인지 데이터 탓인지 가릴 수 있다.
+	docker compose exec -T -e GIT_SHA=$$(git rev-parse --short HEAD) api \
+	  python /app/scripts/eval_parse_quality.py --gate
+
+eval-parse-baseline: ## V1 기준선 고정 — 알려진 상태를 박아두고 이후엔 회귀만 본다
+	docker compose exec -T -e GIT_SHA=$$(git rev-parse --short HEAD) api \
+	  python /app/scripts/eval_parse_quality.py --update-baseline
+
+eval-parse-dist: ## 위 지표의 코퍼스 분포만 출력 (임계 정하기 전에 보는 것)
+	docker compose exec -T api python /app/scripts/eval_parse_quality.py --distribution
+
 mem-budget: ## 프로필별 mem_limit 합계 검증 (11Gi 상한, 한도 미설정도 실패)
 	python3 scripts/mem_budget.py
 	python3 scripts/mem_budget.py -f docker-compose.yml -f docker-compose.paddle-gpu.yml
