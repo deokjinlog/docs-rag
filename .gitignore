@@ -10,7 +10,13 @@
 *.pyc
 *.pyo
 .DS_Store
-.claude/
+# ⚠ 디렉토리 자체(`.claude/`)를 제외하면 하위 예외(`!`)가 **안 먹는다** — git 은 제외된
+# 디렉토리 안으로 들어가지 않는다. 내용물을 제외(`.claude/*`)해야 예외를 걸 수 있다.
+.claude/*
+# 예외: 파괴적 명령 가드는 **저장소에 남긴다**. 개인 설정이 아니라 사고에서 나온
+# 안전장치라, 다시 클론했을 때 같이 따라와야 의미가 있다(2026-09-10 데이터 소실).
+!.claude/settings.json
+!.claude/hooks/
 .env
 .env.*.local
 .env.local
@@ -25,3 +31,6 @@ data/
 data/eval/scanset/
 logs/
 model/
+
+# DB·벡터 백업 (make backup) — 크고 재생성 가능
+data/backup/

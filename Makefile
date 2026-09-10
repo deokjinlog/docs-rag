@@ -147,13 +147,31 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 # ── compose 프로필 (D1) ──────────────────────────────────────────────────────
 # 전 서비스를 함께 띄우면 mem_limit 합계가 WSL 15Gi 를 넘어 스택이 통째로 죽는다(실측 4회).
 # 한 번에 뜨는 조합을 프로필로 못박고 `make mem-budget` 이 합계를 기계로 검증한다.
-backup: ## DB 덤프 → data/backup/docsrag_<날짜>.sql. **파괴적 작업 전에 반드시**
+backup: ## DB 덤프 + Qdrant 스냅샷 → data/backup/. **파괴적 작업 전에 반드시**
 	@mkdir -p data/backup
 	@f=data/backup/docsrag_$$(date +%Y%m%d_%H%M).sql; \
 	 docker compose exec -T postgres pg_dump -U docsrag -d docsrag --no-owner > $$f && \
-	 echo "  백업 완료: $$f ($$(du -h $$f | cut -f1))"
-	@# 2026-09-10: schema.sql 을 손으로 돌렸다가 문서 26·청크 8,850 을 날렸다.
-	@# schema.sql 은 이제 비파괴지만, 스키마를 건드릴 땐 이걸 먼저 돌리는 습관이 답이다.
+	 echo "  DB 백업: $$f ($$(du -h $$f | cut -f1))"
+	@# Qdrant 도 함께 — 2026-09-10 복구가 가능했던 건 **비싼 것이 DB 밖에 있어서**였다.
+	@# 다음 사고에서 비싼 것이 어디 있을지는 모르니, 양쪽을 같이 뜬다.
+	@# 스냅샷은 Qdrant 볼륨 안(snapshots/)에 남는다 — 컨테이너를 지워도 볼륨은 유지된다.
+	@curl -sf -X POST localhost:6333/collections/docs_rag_v1/snapshots \
+	  | python3 -c "import json,sys; d=json.load(sys.stdin).get('result') or {}; \
+	    print('  Qdrant 스냅샷:', d.get('name','?'), f\"({d.get('size',0)/1e6:.0f}MB)\")" \
+	  || echo "  ⚠ Qdrant 스냅샷 실패 (qdrant 미기동?) — DB 백업만 완료"
+
+db-reset: backup ## ⚠ 문서 테이블 전체 삭제 후 재생성. backup 을 **의존성으로** 먼저 돈다
+	@echo "  ⚠ tb_document_* 를 전부 지웁니다. 5초 후 진행 (Ctrl+C 로 중단)"
+	@sleep 5
+	cat db/schema_reset.sql | docker compose exec -T postgres psql -U docsrag -d docsrag
+	cat db/schema.sql       | docker compose exec -T postgres psql -U docsrag -d docsrag
+	@echo "  → 복구가 필요하면: docker compose exec -T api python /app/scripts/recover_from_artifacts.py --apply"
+
+db-restore: ## 최신 백업으로 복원 (data/backup 의 가장 최근 .sql)
+	@f=$$(ls -t data/backup/*.sql 2>/dev/null | head -1); \
+	 [ -n "$$f" ] || { echo "  백업 없음"; exit 1; }; \
+	 echo "  복원: $$f"; \
+	 cat $$f | docker compose exec -T postgres psql -U docsrag -d docsrag >/dev/null && echo "  완료"
 
 down: ## 전 프로필 정지·제거 — ⚠ 그냥 `docker compose down` 은 프로필 서비스를 안 내린다
 	COMPOSE_PROFILES=serve,ingest,ocr,inspect docker compose down --remove-orphans

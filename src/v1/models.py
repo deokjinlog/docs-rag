@@ -105,6 +105,11 @@ class DocumentContents(Base):
     image_paths = Column(JSONB)
     image_ocr_texts = Column(JSONB)
     qdrant_point_id = Column(BigInteger)
+    # ⚠ **BGE-M3 토크나이저 기준**이다(embed.py → utils.embedding.count_tokens).
+    # 서빙의 토큰 예산은 이 값을 **읽지 않는다** — rag/tokens.py 가 Qwen3 토크나이저로
+    # 요청 시점에 다시 센다. 그래야 맞다: 예산은 LLM 컨텍스트를 재는 것이라 서빙 모델과
+    # 같은 토크나이저여야 하고, 다른 걸 쓰면 예산이 어긋난다(tokens.py 독스트링).
+    # 즉 이 컬럼은 색인 통계이지 예산 입력이 아니다. 혼동해서 여기서 읽으면 안 된다.
     token_count = Column(Integer)
     char_count = Column(Integer)
     created_at = Column(DateTime, server_default=func.now())
