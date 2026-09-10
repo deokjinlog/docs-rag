@@ -72,7 +72,8 @@ uv run pytest tests/ -v                                              # rag + gua
 docker compose exec api uv run pytest tests/ -v -m integration       # critic E2E (mocked LLM/Qdrant, docker 안)
 
 # 평가·관측 (Tier 1 일상용)
-python3 scripts/eval_retrieval.py         # 검색 골든 recall@k·MRR (스택 필요, baseline 회귀 시 exit 1) — make eval-retrieval
+make eval-retrieval                       # 검색 골든 recall@k·MRR·dup@10 (스택 필요, verified 문항 회귀 시 exit 1)
+make check-anchors                        # 골든 앵커가 색인에 실제로 있는지 — 골든 늘린 직후 필수
 uv run python scripts/smoke_test.py       # 10 DoD 자동 검증 (critic 필드 포함)
 uv run python scripts/trace_summary.py                 # 서빙 trace 12-섹션 집계 (critic + input_guard 포함)
 uv run python scripts/trace_summary.py --feedback      # 위 + Feedback DB 7일 JOIN 섹션 추가

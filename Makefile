@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
+        eval eval-retrieval eval-retrieval-baseline check-anchors chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
         mem watch recover lite ingest ingest-gpu retrieve-gpu answer full
 
 
@@ -74,8 +74,18 @@ up: ## 스택 기동 + 검증 (마운트·응답 대조). WSL 재부팅 후엔 c
 eval: ## RAGAS Triad 평가 (Judge=GPT-4o-mini 권장 — OPENAI_API_KEY env 필요. --basic 플래그는 직접 호출)
 	uv run python scripts/eval_ragas.py
 
-eval-retrieval: ## 검색 골든셋 recall@k · MRR (스택 필요 — /retrieve 호출. --update-baseline로 기준선 고정. --segment로 도메인/일반 분해)
-	python3 scripts/eval_retrieval.py
+eval-retrieval: ## 검색 골든셋 recall@k·MRR·dup@10 (스택 필요. ARGS=--segment 등 전달, run 을 tb_eval_run 에 저장)
+	@# api 컨테이너 안에서 돈다 — 여기서만 DB(tb_eval_run)에 닿는다. 호스트에서 직접
+	@# 돌려도 채점은 되지만 run 이 안 남는다. GIT_SHA 를 넘기는 이유는 eval-parse 와 같다.
+	docker compose exec -T -e GIT_SHA=$$(git rev-parse --short HEAD) \
+	  -e RAG_API_BASE=http://localhost:8002/api/v1/docs-rag api \
+	  python /app/scripts/eval_retrieval.py $(ARGS)
+
+eval-retrieval-baseline: ## 검색 기준선 고정 — verified 문항의 recall@5·MRR 을 박아둔다
+	$(MAKE) eval-retrieval ARGS=--update-baseline
+
+check-anchors: ## 검색 골든의 앵커가 색인에 실제로 있는지 확인 (골든 늘린 직후에 돌린다)
+	docker compose exec -T api python /app/scripts/check_golden_anchors.py
 
 chunk-quality: ## RAG 청크 전처리 완성도 게이트 (br·img·page·점선·고아heading·커버리지, 스택 불필요)
 	python3 scripts/eval_chunk_quality.py
