@@ -37,6 +37,7 @@ flowchart LR
 - **결정론 SQL 경로** — "얼마·언제·보장범위"처럼 틀리면 안 되는 값은 RAG 대신 관계형 테이블에서 결정론으로 집어온다. 못 뽑으면 NULL→RAG(precision-first).
 - **2단 의도 라우팅** — 정규식 게이트가 먼저 잡고, 전부 놓칠 때만 임베딩 시맨틱 라우터가 받는다. 점수·마진 미달이면 **기권**(→기존 흐름). held-out precision 0.952 · 오라우팅 0.036.
 - **근거 확인** — 답변이 인용한 조항·숫자가 검색 근거에 있는지 **조(條) 단위**로 대조(정규식, 0ms). 없으면 플래그하되 답은 그대로 반환(전문가 검토용, 자동 교정 없음).
+- **파싱이 깨졌는지 스스로 안다** — 정답 문서 없이 원본 PDF 를 기준선 삼아 조 보존율·글자 커버리지를 잰다. 현재 **조 보존 22/22 문서 누락 0**. 기준선 대비 회귀만 차단해서 게이트가 영구 적색이 되지 않게 한다.
 - **측정 기반 개선** — 골든셋으로 recall@k·RAGAS를 재고 병목(검색/생성)을 진단해 그 축만 고친다. 라우팅·CRAG·Critic은 만들어 두되 **기본 꺼두고 측정이 요구할 때만 켠다**.
 
 ## 빠른 시작
@@ -45,8 +46,11 @@ flowchart LR
 # 0. 스택 없이 추출·조립 자립 검증 — 배포 관문 (회귀 시 exit 1)
 make check
 
-# 1. 스택 기동 + 검증 (마운트·응답까지 대조. WSL 재부팅 후엔 compose up 대신 이걸)
-make up
+# 1. 스택 기동 — **프로필로 나눠 뜬다** (전부 띄우면 15Gi WSL 을 넘겨 통째로 죽는다)
+make serve      # 9.0Gi  api·vllm    — /answer·/retrieve
+make ingest     # 8.5Gi  celery·odl  — extract→chunk→embed
+make ocr        # 10.0Gi paddle(GPU) — ocr 큐만
+make mem-budget # 프로필별 합계가 11Gi 이하인지 기계 검증
 
 # 2. 문서 등록 → 비동기 extract→ocr→chunk→embed
 curl -X POST localhost:8002/api/v1/docs-rag/documents -H 'Content-Type: application/json' \
@@ -60,8 +64,12 @@ curl -X POST localhost:8002/api/v1/docs-rag/answer -H 'Content-Type: application
 uv run python scripts/ask.py "중환자실 하루 얼마?"
 uv run python scripts/check_parsing.py 중환자실 7   # 제7조 항①→호1.→목가. 정밀 뷰
 
-# 5. 검색 골든 채점 (스택 필요 — 검색≠생성 분리 진단)
-make eval-retrieval
+# 5. 채점 (스택 필요)
+make eval-retrieval   # 검색 골든 recall@k·MRR — 검색≠생성 분리 진단
+make eval-parse       # 파싱 불변 조건 — 조 보존·글자 커버리지 (기준선 대비 회귀)
+
+# 6. 파괴적 작업 전엔 반드시
+make backup           # pg_dump + Qdrant 스냅샷
 ```
 
 구성·포트는 [architecture.md](docs/architecture.md), 명령 alias는 [Makefile](Makefile).
@@ -107,10 +115,16 @@ flowchart LR
 
 | 판정 | 실측 비중 | 경로 |
 |---|---|---|
-| NATIVE — 텍스트 레이어 정상 | **94.7%** | ODL + bbox 재구성 |
-| NATIVE_SUSPECT — 레이어는 있는데 깨짐 | 0.0% | OCR 재추출 후 대조 |
-| SCAN_SIMPLE | 1.2% | PP-StructureV3 (OCR) |
-| SCAN_COMPLEX — 표·다단·회전 | 4.1% | PaddleOCR-VL |
+| NATIVE — 텍스트 레이어 정상 | **97.8%** | ODL + bbox 재구성 |
+| NATIVE_SUSPECT — 레이어는 있는데 깨짐 | 0.0% | ODL·OCR 둘 다 뽑아 유효 음절 비율로 선택 |
+| SCAN — 레이어 없음 | 2.2% | PP-StructureV3 (OCR) |
+
+> **3값이다.** 예전엔 SCAN 을 SIMPLE/COMPLEX 로 갈라 각각 OCR/VL 로 보냈는데, PP-StructureV3 가
+> 이미 레이아웃 탐지를 포함하므로 미리 둘로 나눌 이유가 없다. VL 은 페이지 라우팅이 아니라
+> **OCR 결과를 보고 하는 격상**이고, 격상 단위도 페이지가 아니라 줄·영역이다.
+>
+> 판정과 근거 신호는 `tb_page_triage` 에 남는다(3,373행). 처리가 끝나면 PDF 는 `finished/` 로
+> 옮겨지므로, "왜 이 페이지가 OCR 로 갔나"를 나중에 답하려면 그때의 신호가 있어야 한다.
 
 > KB 약관 3종 **1,663페이지** 실측(`make triage`). **전량 VL 33.5시간 → 캐스케이드 12.5분(160배)**.
 > 감으로 정한 임계치가 실제 분포의 빈 구간에 정확히 앉은 것도 이때 확인했다 — NATIVE 최소 66자 vs 스캔 최대 46자, 임계 50.
@@ -132,12 +146,56 @@ VL이 일관 우세하지만 **20~33배 느리고, 열화가 심해져도 격차
 
 상세 [ingest-cascade.md](docs/ingest-cascade.md) · [parser-vl-eval.md](docs/parser-vl-eval.md).
 
+## 파싱 검증 — 정답 문서 없이 파손을 잡는다
+
+"파싱이 잘 됐나"는 보통 사람이 만든 정답 문서가 있어야 답할 수 있다. 그런데 **원본 PDF 의 텍스트 레이어가 이미 기준선**이다 — ODL 이 그걸 얼마나 옮겼는지, 구조 표지(제N조)를 얼마나 살렸는지를 재면 정답 없이도 파손이 잡힌다.
+
+```
+조 보존율      22/22 문서 · 누락 0        (외부 법령 인용 제외 후)
+글자 커버리지   문서중앙 0.974 ~ 1.080     (페이지 내 조판 중복 제거 후)
+```
+
+**이 숫자는 지표를 두 번 고치고 나서야 나왔다.** 두 번 다 "임계가 틀렸나"가 아니라 *"지표가 뭘 재고 있나"* 를 물어서 나온 것이다.
+
+| 처음 값 | 무엇이 문제였나 | 고친 뒤 |
+|---|---|---|
+| KB 약관 커버리지 **0.88** | 세로 탭·머리글이 한 페이지에 3~4번 렌더링되고(`제조준용규정` 260회) PyMuPDF 가 다 뽑는다. **ODL 은 올바르게 걷어내는데** 원시 글자 수로 나누니 그 정직함이 감점이 됐다 | **1.06** |
+| R10 "조 3개 누락" | 문서 자신의 조가 아니라 외부 법령 인용(`「보험업법시행령」 제6조의2`) | 누락 0 |
+| R11 "조 13개 누락" | 인용 제외 정규식이 법령명 안의 구분자 때문에 **한쪽만** 지웠다 | 누락 0 |
+
+임계는 전부 **분포의 빈 구간**에 앉혔다 — 칼날 위가 아니라는 뜻이다.
+
+| 지표 | 판정 | 임계 | 근거 |
+|---|---|---|---|
+| 조 누락 | FAIL | ≥ 1 | 22/22 가 0 — 지금은 안 울리고 깨지면 울린다 |
+| 커버리지 문서중앙 | FAIL | < 0.99 | 빈 구간 0.974 → 0.996 |
+| 커버리지 문서최소 | WARN | < 0.79 | 빈 구간 0.752 → 0.828 |
+| 조 순서·희소 페이지·표 개수 차 | **임계 없음** | — | 분포에 빈 구간이 없다. 조 순서 0.632~0.761 연속 — 특약마다 제1조부터 다시 시작하니 **오름차순이 깨지는 게 정상**이다 |
+
+**절대 판정이 아니라 기준선 대비 회귀로 막는다.** 현재 1건이 FAIL 인데 누락의 대부분이 목차 점선·세로 탭이라, 이걸로 게이트를 영구 적색에 두면 사람이 습관적으로 무시하게 된다. 알려진 상태를 `parse_baseline.json` 에 고정하고 **그보다 나빠질 때만** 차단한다.
+
+## 운영 — 15Gi 안에서 돌리기
+
+전 서비스를 함께 띄우면 mem_limit 합계가 WSL 을 넘어 **스택이 통째로 죽는다**(실측 4회). 한 번에 뜨는 조합을 프로필로 못박고 기계가 검증한다.
+
+| 프로필 | 합계 | 구성 |
+|---|---|---|
+| `serve` | 9.0Gi | api + vllm + infra |
+| `ingest` | 8.5Gi | celery + odl + infra |
+| `ocr` | 10.0Gi | celery-ocr(동시성 1) + paddle(GPU) + infra |
+| `inspect` | 5.0Gi | api + infra (읽기 전용) |
+
+`make mem-budget` 이 compose 에서 합계를 재계산해 11Gi 상한을 검증하고, **한도 미설정도 실패로 센다** — 실제로 postgres·qdrant·rabbitmq 가 무제한이었다.
+
+> **사고에서 배운 것.** `db/schema.sql` 을 손으로 실행해 문서 26·청크 8,850 을 날린 적이 있다(파일 맨 앞에 `DROP TABLE` 8줄). 비싼 것이 DB 밖(Qdrant payload·디스크 raw)에 있어서 재임베딩 없이 전량 복구했지만, 대책은 경고문이 아니라 구조다 — `schema.sql` 을 비파괴로 바꾸고 파괴는 `schema_reset.sql` 로 분리했으며, 파괴적 명령은 훅이 사람 확인으로 돌린다. `make backup` 은 pg_dump 와 Qdrant 스냅샷을 함께 뜬다.
+
 ## 평가
 
 수치를 자랑하기보다 **측정이 스스로 개선을 구동하는 루프**를 설계했다. 정답 근거가 달린 골든셋 21종을 단계별로 쌓았다(judge는 serving 모델과 분리해 self-preference bias 회피).
 
 | 축 | 지표 | 현재 |
 |---|---|---|
+| 파싱 무결성 | 조 보존율 · 글자 커버리지 (정답 문서 불필요) | **조 누락 0/22문서 · 커버리지 중앙 0.97~1.08** (3,308p, `make eval-parse`) |
 | 검색 품질 | recall@k · MRR (원문 앵커 라벨, 재청킹 무관) | **recall@5/@10=1.00 · @3=0.96 · @1=0.76 · MRR=0.86** (25문항) |
 | 추출·조립 | 파싱·payout·면책·완결성·reconcile 등 | **골든 13종 green** (`make check`, 회귀 시 exit 1) |
 | SQL 라우팅 | /answer 결정론 분기 (부정 5문항 포함) | **31/31 = 1.00** (`make eval-sql-routing`) |
@@ -210,6 +268,7 @@ SQL 경로가 이 비용을 통째로 회피하는 것이 3경로 설계의 실�
 | 문서 파싱 | 페이지 triage → ODL(+bbox 재구성) · PP-StructureV3(OCR) · PaddleOCR-VL(격상) |
 | 저장 | PostgreSQL(메타·관계형) + Qdrant(벡터DB) |
 | 하드웨어 | 로컬 RTX 4060 Laptop 8GB · WSL2 · Docker |
+| 운영 | compose 프로필 4종(합계 ≤11Gi, 기계 검증) · 파괴적 명령 훅 · pg_dump + Qdrant 스냅샷 백업 |
 
 ## 문서
 
