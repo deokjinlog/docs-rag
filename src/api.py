@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from celery_app import celery_app  # noqa: F401 — API 프로세스에서 broker 연결 보장
+from v1.inspector.routes import router as inspector_router
 from v1.router import router as v1_router
 
 app = FastAPI(
@@ -26,3 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(v1_router, prefix="/api/v1/docs-rag")
+
+# Inspector 는 JSON API 가 아니라 **사람이 보는 HTML** 이라 버전 prefix 밖에 둔다.
+# 읽기 전용(GET only)이고 `inspect` 프로필(api+infra, 5.0Gi)만으로 돈다.
+app.include_router(inspector_router, prefix="/inspector", include_in_schema=False)

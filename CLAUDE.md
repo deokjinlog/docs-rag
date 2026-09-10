@@ -17,6 +17,8 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
 - `src/v1/rag/`         : RAG 서빙 전략 — 쿼리 라우팅·검색·리랭킹·sibling·토큰 예산·검증·critic·trace·prompts
   - `clients.py` (Qdrant·LLM·CrossEncoder 싱글톤) / `search.py` (filter·hybrid·rerank)
   - `sibling.py` / `tokens.py` / `classifier.py` / `grader.py` / `prompts.py` / `trace.py`
+- `src/v1/inspector/`   : 육안 검수 화면 (읽기 전용 HTML). `dup.py`·`coverage.py` 는 순수 모듈,
+                          `routes.py` 가 FastAPI. `/inspector` — 원본 페이지↔청크 대조·색인 도달률·중복군
 - `src/v1/guards/`      : Input Guard (PII 정규식 마스킹) — Guardrails 6계층 중 1계층
 - `src/v1/utils/`       : 데이터 파이프라인 유틸 (청킹, 전처리, 임베딩, OCR 래퍼)
 - `src/v1/config/`      : 설정 (DB, Qdrant, LLM, 검색/청킹/OCR 상수)
@@ -74,6 +76,7 @@ docker compose exec api uv run pytest tests/ -v -m integration       # critic E2
 # 평가·관측 (Tier 1 일상용)
 make eval-retrieval                       # 검색 골든 recall@k·MRR·dup@10 (스택 필요, verified 문항 회귀 시 exit 1)
 make check-anchors                        # 골든 앵커가 색인에 실제로 있는지 — 골든 늘린 직후 필수
+make inspector-url                        # 육안 검수 화면 주소 (make inspect 또는 serve 프로필에서)
 uv run python scripts/smoke_test.py       # 10 DoD 자동 검증 (critic 필드 포함)
 uv run python scripts/trace_summary.py                 # 서빙 trace 12-섹션 집계 (critic + input_guard 포함)
 uv run python scripts/trace_summary.py --feedback      # 위 + Feedback DB 7일 JOIN 섹션 추가

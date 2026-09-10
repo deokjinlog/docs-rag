@@ -1,0 +1,84 @@
+{% extends "_base.html" %}
+{% block title %}{{ did }} p.{{ page }}{% endblock %}
+{% block subtitle %}{{ did }} · {{ name[:56] if name else '' }} · {{ page }}/{{ total_pages }}p{% endblock %}
+{% block body %}
+<style>
+  .split{display:grid;grid-template-columns:minmax(320px,44%) 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.split{grid-template-columns:1fr}}
+  .pane{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px}
+  .pane img{width:100%;border-radius:4px;background:#fff}
+  .nav{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .nav input{width:64px;background:#0f1115;color:var(--fg);border:1px solid var(--line);
+             border-radius:4px;padding:3px 6px}
+  .chunk{border:1px solid var(--line);border-radius:6px;margin-bottom:10px;background:var(--panel)}
+  .chunk summary{padding:8px 10px;cursor:pointer;list-style:none;display:flex;gap:8px;
+                 align-items:baseline;flex-wrap:wrap}
+  .chunk summary::-webkit-details-marker{display:none}
+  .chunk[open] summary{border-bottom:1px solid var(--line)}
+  .chunk pre{margin:0;padding:10px 12px;white-space:pre-wrap;word-break:break-word;
+             font:12px/1.65 ui-monospace,Menlo,monospace;color:#c8cfdb;max-height:520px;overflow:auto}
+  .hp{color:var(--dim);font-size:12px}
+  .dupbadge{color:#fbbf24;border-color:#463a16}
+  .miss{color:var(--dim);padding:24px;text-align:center;border:1px dashed var(--line);border-radius:6px}
+</style>
+<div class="nav">
+  <a href="/inspector">← 목록</a>
+  {% if page > 1 %}<a href="?page={{ page-1 }}">◀ 이전</a>{% endif %}
+  <form style="display:inline" method="get"><input name="page" value="{{ page }}" type="number"
+        min="1" max="{{ total_pages }}"> / {{ total_pages }}</form>
+  {% if page < total_pages %}<a href="?page={{ page+1 }}">다음 ▶</a>{% endif %}
+  <span class="dim">중복군 {{ dup_groups }}개 · {{ dup_total }}청크</span>
+</div>
+<div class="split">
+  <div class="pane">
+    {% if has_source %}
+      <img src="/inspector/docs/{{ sc }}/{{ did }}/page/{{ page }}.png" alt="p.{{ page }}" loading="lazy">
+    {% else %}
+      <div class="miss">원본 PDF 를 못 찾았다<br><span class="mono">{{ name }}</span><br>
+        <span style="font-size:12px">data/input · finished · error 어디에도 없다 — 옮겼거나 지워졌다</span></div>
+    {% endif %}
+    {% if triage %}
+    <p class="hp" style="margin-top:10px">
+      <span class="tag {{ triage[0] }}">{{ triage[0] }}</span>
+      글자 {{ triage[1] }} · garbage {{ triage[2] }} · 구분자 {{ triage[3] }} ·
+      이미지피복 {{ triage[4] }} · 앵커 {{ triage[5] }} · <span class="dim">{{ triage[6] }}</span>
+    </p>
+    {% else %}<p class="hp" style="margin-top:10px">이 페이지의 판별 기록 없음</p>{% endif %}
+    {% if cov %}
+    <p class="hp" style="margin-top:6px">
+      색인 도달 <b class="{{ 'PASS' if cov.reached == 1.0 else ('WARN' if cov.reached and cov.reached >= 0.95 else 'FAIL') }}">{{ cov.reached }}</b>
+      <span class="dim">· 그대로 {{ cov.kept }} · 흩어짐 {{ cov.split }} · 누락 {{ cov.missing }}
+      · 판정제외 {{ cov.skip }}(짧은 조판 부스러기)</span>
+    </p>
+    {% if cov.missing_lines %}
+    <details class="chunk" style="margin-top:6px" open>
+      <summary><span class="tag" style="color:var(--bad);border-color:#4a2222">색인에 없는 줄 {{ cov.missing + 0 }}</span>
+        <span class="hp" style="flex-basis:100%">머리글·페이지번호·세로탭은 <b>정상적으로</b> 빠진다 — 본문이 섞여 있으면 그게 파손이다</span></summary>
+      <pre>{% for line, gaps in cov.missing_lines %}✗ {{ line }}
+   구멍: {{ gaps|join(' / ') }}
+{% endfor %}{% if cov.missing_more %}… 외 {{ cov.missing_more }}줄{% endif %}</pre>
+    </details>
+    {% endif %}
+    {% endif %}
+  </div>
+  <div>
+    {% if not chunks %}
+      <div class="miss">이 페이지에서 나온 청크가 없다.<br>
+        <span style="font-size:12px">표지·목차·백지면 정상이고, 본문 페이지라면 <b>파싱이 이 페이지를 통째로 빠뜨린 것</b>이다</span></div>
+    {% endif %}
+    {% for c in chunks %}
+    <details class="chunk" {% if loop.index <= 3 %}open{% endif %}>
+      <summary>
+        <span class="mono dim">#{{ c.id }}</span>
+        <span class="tag {{ c.chunk_type }}">{{ c.chunk_type }}</span>
+        {% if c.part_total and c.part_total > 1 %}<span class="tag">part {{ c.part_index }}/{{ c.part_total }}</span>{% endif %}
+        {% if c.dup_group %}<span class="tag dupbadge" title="포함도 {{ c.dup_score }} · 같은 군: {{ c.dup_peers|join(', ') }}">중복군 {{ c.dup_group }} ({{ c.dup_score }})</span>{% endif %}
+        <span class="mono dim">{{ c.char_count }}자 · p.{{ c.start_page }}{% if c.end_page and c.end_page != c.start_page %}–{{ c.end_page }}{% endif %}</span>
+        <span class="hp" style="flex-basis:100%">{{ c.heading_path or '(heading 없음)' }}</span>
+      </summary>
+      <pre>{{ c.content }}</pre>
+    </details>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

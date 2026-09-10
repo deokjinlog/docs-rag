@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Inspector{% endblock %} · docs-rag</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#d7dbe3;--dim:#8b94a6;
+        --ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--accent:#60a5fa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 -apple-system,"Noto Sans KR",Segoe UI,sans-serif}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  header{padding:12px 20px;border-bottom:1px solid var(--line);display:flex;
+         gap:16px;align-items:baseline;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  .dim{color:var(--dim)} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  main{padding:16px 20px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--bg)}
+  tr:hover td{background:#141821}
+  .tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;
+       border:1px solid var(--line);color:var(--dim)}
+  .tag.NATIVE{color:var(--ok);border-color:#1f4030}
+  .tag.NATIVE_SUSPECT{color:var(--warn);border-color:#463a16}
+  .tag.SCAN{color:var(--bad);border-color:#4a2222}
+  .tag.table{color:#c084fc;border-color:#3b2a4d} .tag.image{color:#38bdf8;border-color:#1b3b4d}
+  .PASS{color:var(--ok)} .WARN{color:var(--warn)} .FAIL{color:var(--bad)}
+  .note{color:var(--dim);font-size:12px;margin:4px 0 14px}
+</style></head><body>
+<header>
+  <h1><a href="/inspector">docs-rag Inspector</a></h1>
+  <span class="dim">{% block subtitle %}{% endblock %}</span>
+  <span class="dim" style="margin-left:auto">읽기 전용</span>
+</header>
+<main>{% block body %}{% endblock %}</main>
+</body></html>

@@ -6,7 +6,7 @@ export
 
 .PHONY: api celery flower \
         test test-host test-integration test-rag test-guards \
-        eval eval-retrieval eval-retrieval-baseline check-anchors chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
+        eval eval-retrieval eval-retrieval-baseline check-anchors inspector-url chunk-quality eval-routing eval-sql-routing feedback-submit trace trace-feedback smoke eval-ocr eval-index bench bench-load diagnose \
         mem watch recover lite ingest ingest-gpu retrieve-gpu answer full
 
 
@@ -213,8 +213,14 @@ ocr: ## OCR 프로필 (10.0Gi) — celery-ocr(동시성1)·paddle GPU·infra. oc
 	docker compose -f docker-compose.yml -f docker-compose.paddle-gpu.yml --profile ocr up -d
 	@echo "→ ocr 큐 소비 시작. 끝나면 'docker compose --profile ocr down' 으로 GPU 반납"
 
-inspect: ## 관측 프로필 (5.0Gi) — api(Inspector·Eval Studio)·infra. 읽기 전용
+inspect: ## 관측 프로필 (5.0Gi) — api(Inspector)·infra. 읽기 전용
 	PROFILE=inspect bash scripts/stack_up.sh
+	@echo "  → Inspector  http://localhost:8002/inspector  (문서 목록 · 원본↔청크 대조 · 중복군)"
+
+inspector-url: ## Inspector 주소만 출력 (serve/inspect 어느 프로필에서든 뜬다)
+	@echo "http://localhost:8002/inspector"
+	@echo "  문서 뷰어  /inspector/docs/01/R05?page=15   ← 원본 페이지 ↔ 그 페이지 청크"
+	@echo "  중복군 계산 /inspector?dup=1                 ← 전 청크 스캔이라 느리다"
 
 lite: ## 경량 — 앱만 내리고 infra 유지 (make check·자립 골든용)
 	docker compose stop vllm paddle odl celery celery-ocr flower 2>/dev/null || true

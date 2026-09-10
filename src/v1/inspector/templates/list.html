@@ -1,0 +1,31 @@
+{% extends "_base.html" %}
+{% block title %}문서 목록{% endblock %}
+{% block subtitle %}{{ rows|length }}문서{% if run_id %} · V1 run {{ run_id }}{% endif %}{% endblock %}
+{% block body %}
+<p class="note">
+  판별(NATIVE/SUSPECT/SCAN)은 <span class="mono">tb_page_triage</span>, V1 은 최근 파싱 run 의 문서별 판정.
+  {% if dup_on %}중복군 계산 켜짐 — <a href="/inspector">끄기</a>{% else %}
+  중복군은 전 청크 스캔이라 기본 꺼짐 — <a href="/inspector?dup=1">계산하기</a>{% endif %}
+</p>
+<table>
+ <tr><th>문서</th><th>이름</th><th>상태</th><th>페이지</th><th>청크</th>
+     <th>페이지 판별</th><th>V1</th>{% if dup_on %}<th>중복군</th>{% endif %}</tr>
+ {% for r in rows %}
+ <tr>
+  <td class="mono"><a href="/inspector/docs/{{ r.sc }}/{{ r.did }}">{{ r.did }}</a></td>
+  <td>{{ r.name[:48] if r.name else '—' }}<span class="dim"> {{ r.stage or '' }}</span></td>
+  <td class="mono dim">{{ r.status or '—' }}</td>
+  <td class="mono">{{ r.pages or '—' }}</td>
+  <td class="mono">{{ r.n_chunks }}
+    {% if r.chunks['table'] %}<span class="tag table">표 {{ r.chunks['table'] }}</span>{% endif %}
+    {% if r.chunks['image'] %}<span class="tag image">img {{ r.chunks['image'] }}</span>{% endif %}</td>
+  <td>{% for route, n in r.triage.most_common() %}<span class="tag {{ route }}">{{ route }} {{ n }}</span> {% endfor %}
+      {% if not r.triage %}<span class="dim">—</span>{% endif %}</td>
+  <td>{% if r.v1 %}<span class="{{ r.v1.verdict }}">{{ r.v1.verdict }}</span>
+        <span class="dim mono">{{ r.v1.cov }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+  {% if dup_on %}<td class="mono">{% if r.dup and r.dup.groups %}{{ r.dup.groups }}군 ·
+      {{ r.dup.chunks }}청크 <span class="dim">({{ r.dup.pct }}%)</span>{% else %}<span class="dim">0</span>{% endif %}</td>{% endif %}
+ </tr>
+ {% endfor %}
+</table>
+{% endblock %}
