@@ -205,6 +205,43 @@ def parse_markdown_pages(md_path: Path) -> list:
     return pages
 
 
+def _record_triage(db, service_code: str, document_id: str, pdf_path: Path) -> None:
+    """페이지별 판정·신호를 tb_page_triage 에 적재.
+
+    **실패해도 추출을 막지 않는다** — triage 는 관측이지 추출의 전제가 아니다. 다만
+    조용히 넘어가지는 않는다(WARNING). 이 프로젝트에서 무언가가 소리 없이 사라지는 건
+    늘 사고의 시작이었다(image 청크 0개가 1년 가까이 안 보였던 것처럼).
+    """
+    try:
+        import pymupdf
+
+        from ..repository import PageTriageRepository
+        from ..utils.triage import classify, load_config, signals_from_page
+
+        cfg = load_config()
+        rows = []
+        with pymupdf.open(pdf_path) as doc:
+            for i in range(len(doc)):
+                sig = signals_from_page(doc[i], cfg)
+                rows.append({
+                    "page_no": i + 1, "route": classify(sig, cfg),
+                    "char_count": sig.char_count,
+                    "garbage_ratio": sig.garbage_ratio,
+                    "separator_ratio": sig.separator_ratio,
+                    "image_cover": sig.image_cover,
+                    "anchor_hits": sig.anchor_hits,
+                    "font_flags": sig.font_flags or None,
+                    "source": "pymupdf",
+                })
+        n = PageTriageRepository(db).replace_document(service_code, document_id, rows)
+        dist = {}
+        for r in rows:
+            dist[r["route"]] = dist.get(r["route"], 0) + 1
+        logger.info(f"[triage] {pdf_path.name} — {n}p {dist}")
+    except Exception as e:
+        logger.warning(f"[triage 실패 — 추출은 계속] {pdf_path.name}: {type(e).__name__}: {e}")
+
+
 # Celery Task
 @celery_app.task(bind=True, name="v1.task.extract.extract_pdf", max_retries=3)
 def extract_pdf(self, service_code: str, document_id: str, document_name: str):
@@ -229,6 +266,13 @@ def extract_pdf(self, service_code: str, document_id: str, document_name: str):
 
             doc_repo.update_status(service_code, document_id, StatusCode.PROCESSING_PDF_EXTRACT)
             logger.info(f"[추출] {document_name}")
+
+            # ── 페이지 판별 (triage) — **추출 직전**에 한다 ──────────────────────
+            # 여기가 유일하게 원본 PDF 가 손에 있는 지점이다. 추출이 끝나면 파일은
+            # finished/ 로 옮겨지고, 판정을 나중에 하려면 그 파일을 다시 찾아야 한다.
+            # 판정 자체는 아직 라우팅을 바꾸지 않는다(경로는 여전히 ODL 단일) — 먼저
+            # 관측만 쌓고, 분포를 보고 나서 폴백을 켠다. 이 프로젝트의 순서 그대로다.
+            _record_triage(db, service_code, document_id, pdf_path)
 
             OUTPUT_RAW_DIR.mkdir(parents=True, exist_ok=True)
             extract_mode = run_extract(pdf_path, OUTPUT_RAW_DIR)

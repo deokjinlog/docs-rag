@@ -1,12 +1,12 @@
 """SQLAlchemy 모델 — db/schema.sql과 동기 유지가 필수.
 
-7테이블: CodeMaster / DocumentStatus / DocumentStatusLog / DocumentExtract /
-DocumentChunk / DocumentContents / QueryFeedback. schema.sql에 컬럼을 추가하면
+8테이블: CodeMaster / DocumentStatus / DocumentStatusLog / DocumentExtract /
+DocumentChunk / DocumentContents / QueryFeedback / PageTriage. schema.sql에 컬럼을 추가하면
 여기 모델도 동시에 갱신해야 ORM 쿼리가 깨지지 않는다 (FK 미사용 정책 — 운영
 단순화 + 부분 삭제·재처리 자유도 우선).
 """
 
-from sqlalchemy import Column, BigInteger, Integer, String, Text, DateTime
+from sqlalchemy import Column, BigInteger, Boolean, Integer, Numeric, String, Text, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -124,3 +124,31 @@ class QueryFeedback(Base):
     signal = Column(String(20), nullable=False)
     free_text = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class PageTriage(Base):
+    """페이지 단위 라우팅 판정 + 근거 신호 (extract 직전).
+
+    **왜 신호까지 저장하나**: 판정 자체는 규칙이라 언제든 재계산할 수 있지만, 재계산하려면
+    원본 PDF 를 다시 열어야 한다. 그런데 처리가 끝난 문서는 파일이 finished 로 옮겨지고
+    나중엔 사라질 수도 있다. "왜 이 페이지가 OCR 로 갔나"를 그때 답하려면 신호가 남아야 한다.
+    임계치를 바꿀 때 재처리 없이 분포 변화를 dry-run 하는 것도 이 표가 있어야 된다.
+
+    복합키 (service_code, document_id, page_no) — 기존 전 테이블과 같은 키 형태.
+    """
+    __tablename__ = "tb_page_triage"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    service_code = Column(String(2), nullable=False)
+    document_id = Column(String(255), nullable=False)
+    page_no = Column(Integer, nullable=False)
+    route = Column(String(20), nullable=False)      # NATIVE | NATIVE_SUSPECT | SCAN
+    char_count = Column(Integer)
+    garbage_ratio = Column(Numeric(6, 4))
+    separator_ratio = Column(Numeric(6, 4))
+    image_cover = Column(Numeric(5, 3))
+    anchor_hits = Column(Integer)
+    font_flags = Column(JSONB)
+    conf_stats = Column(JSONB)
+    source = Column(String(16), nullable=False)     # pymupdf | odl_tree
+    decided_at = Column(DateTime, server_default=func.current_timestamp())

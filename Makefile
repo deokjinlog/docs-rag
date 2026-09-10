@@ -147,6 +147,14 @@ recover: ## 스택 반쯤 깨졌을 때(WSL 재시작 여파: DNS·마운트 소
 # ── compose 프로필 (D1) ──────────────────────────────────────────────────────
 # 전 서비스를 함께 띄우면 mem_limit 합계가 WSL 15Gi 를 넘어 스택이 통째로 죽는다(실측 4회).
 # 한 번에 뜨는 조합을 프로필로 못박고 `make mem-budget` 이 합계를 기계로 검증한다.
+backup: ## DB 덤프 → data/backup/docsrag_<날짜>.sql. **파괴적 작업 전에 반드시**
+	@mkdir -p data/backup
+	@f=data/backup/docsrag_$$(date +%Y%m%d_%H%M).sql; \
+	 docker compose exec -T postgres pg_dump -U docsrag -d docsrag --no-owner > $$f && \
+	 echo "  백업 완료: $$f ($$(du -h $$f | cut -f1))"
+	@# 2026-09-10: schema.sql 을 손으로 돌렸다가 문서 26·청크 8,850 을 날렸다.
+	@# schema.sql 은 이제 비파괴지만, 스키마를 건드릴 땐 이걸 먼저 돌리는 습관이 답이다.
+
 down: ## 전 프로필 정지·제거 — ⚠ 그냥 `docker compose down` 은 프로필 서비스를 안 내린다
 	COMPOSE_PROFILES=serve,ingest,ocr,inspect docker compose down --remove-orphans
 

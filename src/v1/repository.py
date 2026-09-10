@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import logging
 
-from .models import DocumentStatus, DocumentStatusLog, DocumentExtract, DocumentChunk, DocumentContents, CodeMaster, QueryFeedback
+from .models import DocumentStatus, DocumentStatusLog, DocumentExtract, DocumentChunk, DocumentContents, CodeMaster, QueryFeedback, PageTriage
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +315,50 @@ class ContentsRepository:
         ).delete()
         # commit은 호출자(task)가 담당.
         return count
+
+
+class PageTriageRepository:
+    """tb_page_triage 관리 — 페이지 판별 결과 적재/조회.
+
+    **재처리 안전성**: 같은 문서를 다시 처리하면 판정이 달라질 수 있으므로(임계치 변경 등)
+    문서 단위로 지우고 다시 넣는다. 부분 갱신은 옛 판정과 새 판정이 섞여 분포 집계를
+    조용히 오염시킨다.
+    """
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def replace_document(self, service_code: str, document_id: str, rows: list[dict]) -> int:
+        self.db.query(PageTriage).filter(
+            PageTriage.service_code == service_code,
+            PageTriage.document_id == document_id,
+        ).delete(synchronize_session=False)
+        if not rows:
+            self.db.flush()
+            return 0
+        self.db.bulk_save_objects([
+            PageTriage(
+                service_code=service_code, document_id=document_id,
+                page_no=r["page_no"], route=r["route"],
+                char_count=r.get("char_count"),
+                garbage_ratio=r.get("garbage_ratio"),
+                separator_ratio=r.get("separator_ratio"),
+                image_cover=r.get("image_cover"),
+                anchor_hits=r.get("anchor_hits"),
+                font_flags=r.get("font_flags"),
+                conf_stats=r.get("conf_stats"),
+                source=r.get("source", "pymupdf"),
+            ) for r in rows
+        ])
+        self.db.flush()
+        return len(rows)
+
+    def route_counts(self, service_code: str, document_id: str) -> dict[str, int]:
+        rows = self.db.query(PageTriage.route, func.count(PageTriage.id)).filter(
+            PageTriage.service_code == service_code,
+            PageTriage.document_id == document_id,
+        ).group_by(PageTriage.route).all()
+        return {r: c for r, c in rows}
 
 
 class FeedbackRepository:

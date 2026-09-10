@@ -324,6 +324,29 @@ def _save_ocr_json(path: Path, payload: dict) -> None:
         logger.warning(f"[ocr] _ocr.json 저장 실패 {path}: {e}")
 
 
+def _conf_stats(raw: list[float], kept: list[float]) -> dict:
+    """줄 confidence 의 **컷 전** 분포.
+
+    ⚠ 이게 없으면 신호를 못 쓴다. 응답에는 REC_MIN_SCORE 를 통과한 점수만 담기는데,
+    낮은 줄을 버린 뒤의 평균은 항상 높다 — "이 페이지 OCR 이 얼마나 위태로운가"를
+    가리키는 정보가 컷과 함께 사라진다.
+    실측(합성 스캔셋 24장): `conf<0.8 줄 비율` 이 3-gram 정확도와 r=-0.808 로 상관하고,
+    열화 수준을 고정한 변형 내부에서도 -0.48~-0.91 로 유지된다. 즉 이건 '저해상도라
+    당연히 낮다'가 아니라 **페이지 고유의 신호**다. VL 격상 판단의 1차 입력이 된다.
+    """
+    n = len(raw)
+    if not n:
+        return {"n": 0, "mean": None, "lt80_ratio": None, "cut": 0, "kept": len(kept)}
+    return {
+        "n": n,
+        "mean": round(sum(raw) / n, 4),
+        "median": round(sorted(raw)[n // 2], 4),
+        "lt80_ratio": round(sum(1 for x in raw if x < 0.8) / n, 4),
+        "cut": n - len(kept),          # REC_MIN_SCORE 에 걸려 버려진 줄 수
+        "kept": len(kept),
+    }
+
+
 @app.post("/ocr")
 def ocr(req: OCRRequest):
     """이미지 한 장 OCR → _ocr.json / _ocr_layout.png 저장 + 분류된 blocks 반환."""
@@ -350,6 +373,9 @@ def ocr(req: OCRRequest):
 
         viz_text_lines = os.environ.get("PADDLE_VIZ_TEXT_LINES", "0") == "1"
         all_blocks: list[dict] = []
+        # 응답은 이미지 1장 단위인데 predict 는 여러 result 를 낼 수 있다 → 누적해서 한 번에
+        all_raw_scores: list[float] = []
+        all_kept_scores: list[float] = []
 
         for res in results:
             raw_boxes_all = res["layout_det_res"]["boxes"] if res["layout_det_res"]["boxes"] else []
@@ -383,12 +409,14 @@ def ocr(req: OCRRequest):
             # rec_texts 저장용 — REC_MIN_SCORE 이상만
             kept_rec_texts: list[str] = []
             kept_rec_scores: list[float] = []
+            all_raw_scores.extend(raw_rec_scores)
             kept_text_boxes: list[dict] = []
             for i, (rt, rs) in enumerate(zip(raw_rec_texts, raw_rec_scores)):
                 if rs < REC_MIN_SCORE or not str(rt).strip():
                     continue
                 kept_rec_texts.append(rt)
                 kept_rec_scores.append(rs)
+                all_kept_scores.append(rs)
                 if i < len(raw_rec_polys):
                     poly = raw_rec_polys[i]
                     try:
@@ -419,6 +447,7 @@ def ocr(req: OCRRequest):
                     "parsing_blocks": [],
                     "raw_line_count": len(raw_rec_texts),   # 컷 전엔 몇 줄이었나 — 진단용
                     "raw_box_count": len(raw_boxes_all),
+                    "conf_stats": _conf_stats(raw_rec_scores, kept_rec_scores),
                 })
                 continue
 
@@ -429,6 +458,7 @@ def ocr(req: OCRRequest):
                 "height": res["height"],
                 "rec_texts": kept_rec_texts,
                 "rec_scores": kept_rec_scores,
+                "conf_stats": _conf_stats(raw_rec_scores, kept_rec_scores),
                 "layout_boxes": layout_boxes_with_coords,
                 "parsing_blocks": [
                     {"label": getattr(p, "label", ""), "content": getattr(p, "content", "")}
@@ -448,7 +478,8 @@ def ocr(req: OCRRequest):
 
             all_blocks.extend(_extract_blocks(res))
 
-        return {"status": "ok", "block_count": len(all_blocks), "blocks": all_blocks}
+        return {"status": "ok", "block_count": len(all_blocks), "blocks": all_blocks,
+                "conf_stats": _conf_stats(all_raw_scores, all_kept_scores)}
 
     except HTTPException:
         raise
