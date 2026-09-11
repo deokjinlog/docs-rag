@@ -21,6 +21,9 @@ PDF 등록 → Celery 비동기 `extract → ocr → chunk → embed` → Qdrant
                           `routes.py` 가 FastAPI. `/inspector` — 원본 페이지↔청크 대조·색인 도달률·중복군
 - `src/v1/guards/`      : Input Guard (PII 정규식 마스킹) — Guardrails 6계층 중 1계층
 - `src/v1/utils/`       : 데이터 파이프라인 유틸 (청킹, 전처리, 임베딩, OCR 래퍼)
+                          `chunker_adaptive._table_caption` — 표 청크에 조건 라벨을 붙인다
+                          ("질병을 원인으로…", "<최초계약의 경우>"). 없으면 표에 값만 남아
+                          같은 모양의 표들이 구분 불가로 색인된다
 - `src/v1/config/`      : 설정 (DB, Qdrant, LLM, 검색/청킹/OCR 상수)
 - `odl/`                : PDF→Markdown 변환 (별도 Docker, Java + docling-fast hybrid)
 - `paddle/`             : 이미지 OCR (PP-StructureV3 layout+table+formula+OCR, 별도 Docker, CPU 모드)
@@ -172,6 +175,16 @@ RAG(서빙)와 별개로, 약관에서 **결정론 값을 뽑아 관계형으로
   paddle 없이 실행돼 실패한다.
 - **RabbitMQ 노드명**: `hostname: rabbitmq` 필수. 없으면 컨테이너 재생성마다 `rabbit@<컨테이너ID>` 로
   **새 노드**가 떠서 큐·메시지가 통째로 사라진다(볼륨이 붙어 있어도). 실측: 고아 mnesia 6개.
+- **스크립트에서 embed_document 호출 시 `if __name__ == "__main__":` 필수**: `embed_document` 는
+  `qdrant.upload_points(..., parallel=4)` 로 업로드를 병렬화하는데 이게 **프로세스를 띄우고 자식이
+  `__main__` 모듈을 다시 import** 한다. 가드 없는 스크립트는 자식마다 본문이 재실행돼 재귀 팬아웃.
+  실측 피해(2026-09-10): chunk_document 8중 동시 실행 → R05 청크 332→**2,656**(8배), 자식들의
+  `qdrant.delete(document_id=…)` 가 서로의 업로드를 지워 포인트 소실, api(3g) OOM-kill(exit 137).
+  범인은 `tb_document_status_log` 가 지목했다 — `43→32` 8줄이 **같은 초에 모두 from_status=43**
+  (순차 재시도였다면 두 번째는 32 를 읽는다). 재색인은 `scripts/reindex.py` 를 쓸 것.
+- **청커 수정 → 재색인 필요**: `chunker_adaptive` 를 바꾸면 색인은 그대로다. `make backup` 후
+  `docker compose exec api python /app/scripts/reindex.py --all` (문서당 ~4분, 22문서 ~2시간).
+  표 캡션(`_table_caption`)처럼 content 를 바꾸는 변경은 임베딩까지 다시 해야 효과가 난다.
 - **BM25 이름**: `content-bm25`가 `qdrant.py`/`embed.py`/`router.py` 세 곳. 변경 시 컬렉션 재생성
 - **벡터 1024차원**: `qdrant.py` + BGE-M3. 모델 변경 시 반드시 일치 확인
 - **리랭커 입력 = 임베딩 텍스트 일관성**: 덴스 벡터는 `heading_path + content`로 임베딩(`embed.py` `_embed_text`)하는데 리랭커도 같은 포맷이어야 한다(`search.py` `_rerank_text`). 리랭커만 content-only면 heading 신호(조 제목=도메인 어휘)가 최종 순위에 안 실림 — 실측: 청킹 heading 복구 후에도 recall이 안 움직인 원인이 이 불일치였고, 맞추자 recall@1 0.58→0.83·MRR 0.75→0.92(검색 골든 §9). 한쪽 포맷을 바꾸면 다른 쪽도 같이.

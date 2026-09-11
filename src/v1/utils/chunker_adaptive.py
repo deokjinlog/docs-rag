@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
-import re
+import html
 import logging
+import re
 from dataclasses import dataclass, field
 
 from .preprocess import (
@@ -289,12 +290,52 @@ def _assign_page_ranges(parts: list[str], raw: str, node: MdNode) -> list[tuple[
     return results
 
 
+# ── 표 캡션 ─────────────────────────────────────────────────────────────────
+# 표 청크에는 **값만 있고 그 값이 무슨 조건의 값인지가 없다.** 실측(R05 제3조): 같은 모양의
+# 지급표가 세 번 나오는데 하나는 "상해를 원인으로", 하나는 "질병을 원인으로", 하나는
+# "재가입계약의 경우" 이고 값이 다르다(레진 50% vs 0·25·50%). 그런데 그 조건 라벨은 표
+# 바로 앞 줄에 있어서 **다른 청크로 떨어지고**, heading_path 는 셋 다 같다. 표 하나만
+# 회수되면 어느 조건인지 알 방법이 없다 — 검색도 LLM 도.
+#
+# 그래서 표 바로 앞 줄이 캡션이면 표 청크 본문 맨 앞에 붙인다. heading_path 가 아니라
+# **content** 에 붙이는 이유: ①임베딩·리랭커가 그대로 먹는다 ②LLM 컨텍스트에 조건이 들어간다
+# ③본문이 달라지므로 상해표와 질병표가 **중복으로 묶이지 않는다**(겹쳐 보이던 게 갈린다)
+# ④heading_path 를 건드리면 part_index/sibling 복원의 그룹 키가 흔들린다.
+#
+# 임계 30자는 분포가 아니라 **정밀도 절벽**에서 왔다(표 청크 851, 앞줄 있는 것 683 실측):
+#     ~30자  240건 — 전부 진짜 캡션("질병을 원인으로 …", "<최초계약의 경우>", "구분 기간 지급이자")
+#     31~45   6건 — 반반("가. 의료급여기관 및 …범위"는 캡션, "4.1 2019.9.1 2019.10.1"은 표 데이터)
+#     46~60   3건 — 전부 본문 조각("2 제1항에서 정하지 않은 용어의 뜻은 …")
+# 9건을 포기하고 오염을 0으로 두는 쪽을 골랐다 — 잘못 붙은 캡션은 조건을 **거짓으로** 말한다.
+_CAPTION_MAX_CHARS = 30
+_CAPTION_MARKER_RE = re.compile(r'^\s*(?:[-*+•○◦▣□▪]|\d+[.)]|[가-힣][.)]|[①-⑳])\s*')
+_CAPTION_SENT_END_RE = re.compile(r'(?:다|요|음|함|까)\s*[.。]?\s*$')     # 문장이면 캡션이 아니다
+
+
+def _table_caption(line: str) -> str | None:
+    """표 바로 앞 줄 → 캡션(붙일 문자열) 또는 None.
+
+    `html.unescape` 를 쓰는 이유: 파이프라인이 `<최초계약의 경우>` 를 `&lt;…&gt;` 로 저장한다.
+    그대로 붙이면 조건 라벨이 엔티티 문자열로 임베딩돼 신호가 죽는다.
+    """
+    t = _CAPTION_MARKER_RE.sub("", " ".join((line or "").split()))
+    t = html.unescape(t).strip()
+    if not t or len(t) > _CAPTION_MAX_CHARS:
+        return None
+    if _CAPTION_SENT_END_RE.search(t):
+        return None
+    if t.startswith("|") or t.startswith("#"):          # 표 행·헤딩은 캡션이 아니다
+        return None
+    return t
+
+
 # 텍스트/테이블 분리
 @dataclass
 class _Segment:
     """노드 콘텐츠 내 텍스트 또는 테이블 블록."""
     content: str
     chunk_type: str  # "text" | "table"
+    caption: str | None = None      # 표 세그먼트에만 — 바로 앞 줄에서 딴 조건 라벨
 
 
 def _split_segments(body: str) -> list[_Segment]:
@@ -303,13 +344,18 @@ def _split_segments(body: str) -> list[_Segment]:
     text_buf: list[str] = []
     table_buf: list[str] = []
 
+    pending_caption: str | None = None
     for line in body.split('\n'):
         is_table_line = line.strip().startswith('|') and line.strip().endswith('|')
         if is_table_line:
-            # 테이블 시작 → 누적된 텍스트를 먼저 flush
+            # 테이블 시작 → 누적된 텍스트를 먼저 flush. 이때 **마지막 줄이 캡션이면** 표로 넘긴다.
             if text_buf:
                 joined = '\n'.join(text_buf).strip()
-                if joined:
+                lines = [l for l in joined.split('\n') if l.strip()]
+                pending_caption = _table_caption(lines[-1]) if lines else None
+                # 텍스트가 캡션 한 줄뿐이면 별도 청크로 내보내지 않는다 — 내용은 표에 실려
+                # 살아 있고, 20자짜리 고아 청크는 검색에 잡음만 된다(실측 R05 #5679).
+                if joined and not (pending_caption and len(lines) == 1):
                     segments.append(_Segment(content=joined, chunk_type="text"))
                 text_buf = []
             table_buf.append(line)
@@ -318,15 +364,18 @@ def _split_segments(body: str) -> list[_Segment]:
             if table_buf:
                 joined = '\n'.join(table_buf).strip()
                 if joined:
-                    segments.append(_Segment(content=joined, chunk_type="table"))
+                    segments.append(_Segment(content=joined, chunk_type="table",
+                                             caption=pending_caption))
                 table_buf = []
+                pending_caption = None
             text_buf.append(line)
 
     # 잔여 flush
     if table_buf:
         joined = '\n'.join(table_buf).strip()
         if joined:
-            segments.append(_Segment(content=joined, chunk_type="table"))
+            segments.append(_Segment(content=joined, chunk_type="table",
+                                     caption=pending_caption))
     if text_buf:
         joined = '\n'.join(text_buf).strip()
         if joined:
@@ -399,21 +448,25 @@ def _chunk_node(node: MdNode, source_file: str, service_code: str = "") -> list[
     # Text/Table 독립 분리
     segments = _split_segments(body)
 
-    # 각 세그먼트를 타입별로 청킹
-    all_parts: list[tuple[str, str]] = []  # (content, chunk_type)
+    # 각 세그먼트를 타입별로 청킹.
+    # ⚠ 캡션은 여기서 붙이지 않는다. _assign_page_ranges 가 **원문에서 본문을 찾아** 페이지를
+    #   매기는데, 원문에 없는 캡션(마커 제거·엔티티 해제됨)을 앞에 붙이면 find 가 실패해
+    #   그 청크부터 페이지 귀속이 노드 단위로 뭉개진다. 캡션은 Chunk 를 만들 때 붙인다.
+    all_parts: list[tuple[str, str, str | None]] = []  # (content, chunk_type, caption)
 
     for seg in segments:
         if seg.chunk_type == "table":
-            # 테이블은 독립 보존. TABLE_MAX_CHARS 초과 시 행 단위 분할 (헤더 반복)
+            # 테이블은 독립 보존. TABLE_MAX_CHARS 초과 시 행 단위 분할 (헤더 반복).
+            # 캡션은 **분할된 조각마다** 붙는다 — 큰 표가 쪼개지면 뒤 조각이 조건을 잃는다.
             if len(seg.content) <= TABLE_MAX_CHARS:
-                all_parts.append((seg.content, "table"))
+                all_parts.append((seg.content, "table", seg.caption))
             else:
                 for table_chunk in _split_table(seg.content, TABLE_MAX_CHARS):
-                    all_parts.append((table_chunk, "table"))
+                    all_parts.append((table_chunk, "table", seg.caption))
         else:
             # 텍스트는 TEXT_MAX_CHARS 기준 분할
             if len(seg.content) <= TEXT_MAX_CHARS:
-                all_parts.append((seg.content, "text"))
+                all_parts.append((seg.content, "text", None))
             else:
                 parts = _split_paragraphs(seg.content, TEXT_MAX_CHARS)
 
@@ -440,7 +493,7 @@ def _chunk_node(node: MdNode, source_file: str, service_code: str = "") -> list[
                     merged.pop()
 
                 for m in merged:
-                    all_parts.append((m, "text"))
+                    all_parts.append((m, "text", None))
 
     # part_index 부여 (heading_path 내 문서 순서)
     total = len(all_parts)
@@ -448,10 +501,12 @@ def _chunk_node(node: MdNode, source_file: str, service_code: str = "") -> list[
     page_ranges = _assign_page_ranges(page_contents, raw, node)
 
     chunks: list[Chunk] = []
-    for i, (content, chunk_type) in enumerate(all_parts):
+    for i, (content, chunk_type, caption) in enumerate(all_parts):
         text = content.strip()
         if not text:
             continue
+        if caption:
+            text = f"{caption}\n{text}"
         ps, pe = page_ranges[i] if i < len(page_ranges) else (node_ps, node_pe)
         chunks.append(Chunk(
             content=text, heading=node.heading,
